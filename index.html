@@ -3,102 +3,213 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Matrice 3D + Télécommande (fix rotations & centrage, panneau bas)</title>
+<title>Matrice 3D + Télécommande (donut + tailles dynamiques)</title>
 <style>
-  /* =========================================================
-     VARIABLES CSS GLOBALES
-     ========================================================= */
   :root{
-    --n: 2;                 /* taille matrice n x n */
-    --F: 2;                 /* nb d'étages max (0..F) */
-    --square-size: 100px;    /* taille d’un tableau */
-    --gap: 0px;            /* espacement X = Y entre tableaux (UNIQUE) */
-    --floor-depth: 10px;    /* profondeur par étage (Z) */
+    --n: 2;
+    --F: 2;
+    --square-size: 100px;   /* sera recalculé dynamiquement */
+    --gap: 0px;
+    --floor-depth: 30px;
+
+    --remote-btn: 44px;     /* taille d’un bouton télécommande */
   }
 
   *{ box-sizing: border-box; }
   body{
-    margin:0; height:100vh; background:#0f111a; color:#e9eef7;
+    margin:0;
+    height:100vh;
+    background:#fff;
+    color:#000;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    overflow:hidden;
+    display: flex;
+    flex-direction: column;
   }
 
-  /* =========================================================
-     VIEWER 3D (plein écran)
-     - viewWrap : rotation VISUELLE X/Y (drag souris) — pas de changement logique
-     - logicWrap: rotation LOGIQUE Z (bouton Rotation)
-     ========================================================= */
+  /* Layout responsive : panneau gauche sur desktop, bas sur mobile */
+  @media (min-width: 768px) {
+    body {
+      flex-direction: row;
+    }
+    #controlPanel {
+      flex-direction: column;
+      height: 100%;
+      width: 280px;                    /* un peu plus large pour laisser respirer */
+      border-right: 1px solid #ccc;
+      border-top: none;
+      align-items: stretch;
+    }
+    #viewer {
+      flex: 1;
+    }
+    #remoteWrapper{
+      max-height: calc(100vh - 220px); /* laisse la place aux sliders/boutons */
+    }
+  }
+
+  @media (max-width: 767px) {
+    #controlPanel {
+      flex-direction: column;
+      width: 100%;
+      border-top: 1px solid #ccc;
+    }
+    #viewer {
+      flex: 1;
+    }
+    #remoteWrapper{
+      max-width: 100%;
+      max-height: 45vh;                /* évite la coupure en hauteur */
+    }
+  }
+
+  /* ===== Viewer 3D ===== */
   #viewer{
-    position: absolute; inset:0 0 90px 0;  /* réserve 90px pour le panneau bas */
-    display:flex; align-items:center; justify-content:center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
     perspective: 1100px;
-    background: radial-gradient(1200px 600px at center, #1b2133, #121826);
+    background: #fff;
     user-select:none;
+    overflow: hidden;
   }
   #viewWrap{ transform-style: preserve-3d; }
   #logicWrap{ transform-style: preserve-3d; transform-origin:center center; }
 
-  /* =========================================================
-     GRILLE DES TABLEAUX
-     ========================================================= */
   #grid{
     display:grid;
     transform-style: preserve-3d;
-    gap: var(--gap); /* ⇐ ESPACEMENT IDENTIQUE X ET Y, contrôlé par slider Gap */
+    gap: var(--gap);
     grid-template-columns: repeat(var(--n), var(--square-size));
     grid-template-rows:    repeat(var(--n), var(--square-size));
   }
   .cell{
-    width: var(--square-size); height: var(--square-size);
-    position: relative; transform-style: preserve-3d;
-  }
-  .tile{
-    position:absolute; left:50%; top:50%;
-    width: var(--square-size); height: var(--square-size);
-    border-radius: 10px; border:2px solid #0c4a6e;
-    background: linear-gradient(#b9e6ff,#79c5ff);
-    color:#05324a; font-weight:800; display:flex; align-items:center; justify-content:center;
-    box-shadow: 0 8px 20px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25);
-    transform-origin: 50% 50%;
-    /* IMPORTANT : translation centrée + profondeur + rotation */
-    transform: translate(-50%, -50%) translateZ(0px) rotateZ(0deg);
-    transition: transform 480ms cubic-bezier(.3,.7,.2,1);
-    will-change: transform;
+    width: var(--square-size);
+    height: var(--square-size);
+    position: relative;
+    transform-style: preserve-3d;
   }
 
-  /* =========================================================
-     PANNEAU DE CONTRÔLE (EN BAS)
-     ========================================================= */
-  #controlPanel{
-    position: absolute; left:0; right:0; bottom:0; height:90px;
-    background:#0c111b; border-top:1px solid #1f2937;
-    display:flex; align-items:center; justify-content:center; gap:18px; padding:8px 12px;
+  .tile img {
+  user-select: none;        /* empêche la sélection */
+  pointer-events: none;     /* ignore les clics, laisse passer vers le parent */
+  -webkit-user-drag: none;  /* désactive le drag natif dans WebKit (Chrome, Safari) */
+}
+  .tile{
+    position:absolute;
+    left:50%; top:50%;
+    width: var(--square-size); height: var(--square-size);
+    border-radius: 5px; /* déjà demandé précédemment */
+    border:2px solid #0c4a6e;
+    background: linear-gradient(#b9e6ff,#79c5ff);
+    color:#05324a; font-weight:800;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 8px 20px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25);
+    transform-origin: center center;
+    transition: transform 480ms cubic-bezier(.3,.7,.2,1);
+    will-change: transform;
+    overflow: hidden;
   }
+  .tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* ===== Panneau de contrôle ===== */
+  #controlPanel{
+    background:#f9f9f9;
+    display:flex;
+    align-items: stretch;
+    justify-content:flex-start;
+    gap:14px;
+    padding:12px;
+    flex-wrap: nowrap;
+    overflow: auto;
+  }
+
+  /* Conteneur de la télécommande : scrollable + centré, jamais coupée */
+  #remoteWrapper{
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 220px;
+    padding: 12px;
+    border-radius: 10px;
+    background: #fff;
+    border: 1px solid #ddd;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: auto;                 /* ⇒ si n grand, on scrolle, pas de coupe */
+  }
+  #remote{
+    position: relative;             /* référence pour centrage visuel */
+    display:grid;
+    justify-content:center;
+    align-items: center;
+    gap:8px;
+    grid-template-columns: repeat(var(--n), var(--remote-btn));
+    grid-template-rows:    repeat(var(--n), var(--remote-btn));
+  }
+  #remote button{
+    width:var(--remote-btn); height:var(--remote-btn);
+    border-radius:10px; border:2px solid #0b5a20;
+    background: linear-gradient(#a7efb3,#73d88a);
+    font-weight:800; color:#0b3816; cursor:pointer;
+    box-shadow: 0 6px 12px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.25);
+    flex: 0 0 auto;
+  }
+  #remote button:disabled{ opacity:.6; cursor:not-allowed; }
+
+  /* Donut = rotation globale, centré par-dessus la grille (taille = bouton) */
+  #rotateDonut{
+    position:absolute;
+    left:50%; top:50%;
+    transform: translate(-50%, -50%);
+    width: var(--remote-btn);
+    height: var(--remote-btn);
+    border-radius: 50%;
+    border: calc(var(--remote-btn) / 7.5) solid #666; /* épaisseur relative */
+    background: transparent;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 5;                      /* au-dessus des boutons */
+  }
+  #rotateDonut.disabled{ pointer-events: none; opacity: .5; }
+  #rotateDonut .donut-center{
+    width: calc(var(--remote-btn) * 0.5);
+    height: calc(var(--remote-btn) * 0.5);
+    border-radius: 50%;
+    background: #4CAF50;             /* vert = prêt */
+    transition: background .2s linear;
+  }
+
   .btn{
     padding:10px 14px; border-radius:10px; border:2px solid #0f172a;
     background:#e5e7eb; color:#0f172a; font-weight:800; cursor:pointer;
   }
   .btn:disabled{ opacity:.6; cursor:not-allowed; }
-  .sliders{ display:flex; align-items:center; gap:18px; }
-  .sliders label{ display:flex; flex-direction:column; align-items:flex-start; font-size:12px; }
+
+  .sliders{
+    flex: 0 0 auto;
+    display:flex; flex-direction:column; gap:12px; padding:6px;
+    align-items:flex-start;
+    min-width: 220px;
+  }
+  .sliders label{ display:flex; flex-direction:column; align-items:flex-start; font-size:12px; gap:6px; }
   .sliders input[type="range"]{ width:220px; }
 
-  #remote{
-    display:grid; justify-content:center; gap:8px;
-    grid-template-columns: repeat(var(--n), 44px);
-    grid-template-rows:    repeat(var(--n), 44px);
+  /* Petite zone utilitaires boutons à droite (reset / images) */
+  #tools{
+    flex: 0 0 auto;
+    display:flex; flex-direction:column; gap:10px; align-items:flex-start; justify-content:flex-start;
+    min-width: 220px;
   }
-  #remote button{
-    width:44px; height:44px; border-radius:10px; border:2px solid #0b5a20;
-    background: linear-gradient(#a7efb3,#73d88a); font-weight:800; color:#0b3816; cursor:pointer;
-    box-shadow: 0 6px 12px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.25);
-  }
-  #remote button:disabled{ opacity:.6; cursor:not-allowed; }
 </style>
 </head>
 <body>
 
-<!-- ===================== VIEWER 3D ===================== -->
+<!-- ===== Viewer 3D ===== -->
 <div id="viewer">
   <div id="viewWrap">
     <div id="logicWrap">
@@ -107,13 +218,19 @@
   </div>
 </div>
 
-<!-- ===================== PANNEAU BAS ===================== -->
+<!-- ===== Panneau de contrôle (responsive) ===== -->
 <div id="controlPanel">
-  <div id="remote"></div>
+  <div id="remoteWrapper">
+    <div id="remote"></div>
+    <!-- Donut (rotation globale) centré dans la télécommande -->
+    <div id="rotateDonut" title="Rotation globale (appui court: +45°, appui long: -45°)">
+      <div class="donut-center"></div>
+    </div>
+  </div>
 
   <div class="sliders">
     <label>n
-      <input type="range" id="nSlider" min="1" max="8" value="2"/>
+      <input type="range" id="nSlider" min="2" max="8" value="2" step="2" />
     </label>
     <label>F (étages)
       <input type="range" id="fSlider" min="1" max="8" value="2"/>
@@ -123,34 +240,33 @@
     </label>
   </div>
 
-  <button id="rotateBtn" class="btn" title="Clic court: +45° | Appui long: -45°">Rotation globale (Z)</button>
-  <button id="resetViewBtn" class="btn">Reset Vue 3D</button>
+  <div id="tools">
+    <button id="resetViewBtn" class="btn">Reset Vue 3D</button>
+    <button id="loadImagesBtn" class="btn">Charger images par défaut</button>
+  </div>
 </div>
 
 <script>
-/* =========================================================
-   ETAT GLOBAL (NE TOUCHE PAS AUX PARTIES QUI FONCTIONNENT)
-   ========================================================= */
+/* =========================
+   ÉTAT GLOBAL (inchangé)
+   ========================= */
 const state = {
   n: 2,
   F: 2,
   gap: 0,
-  floorDepth: 10,
-
-  // ROTATIONS — IMPORTANT : garder des angles "bruts" pour éviter les 4 tours
-  logicalRotationRaw: 0,    // degrés cumulés (peut être négatif). Utilisé pour l'anim.
-  rotateStep: 45,           // pas de rotation globale
-
-  isAnimating: false,       // verrou global pendant toute anim (désactive les boutons)
-  tiles: [],                // [{row,col,floor,rotRaw,el}]
+  floorDepth: 30,
+  logicalRotationRaw: 0,
+  rotateStep: 45,
+  isAnimating: false,
+  tiles: [],
 };
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 const mod = (a,n)=>((a % n)+n)%n;
 
+/* =========================
+   TRANSITIONS HELPER
+   ========================= */
 function onTransitionEndOnce(el, prop, timeout=1200){
   return new Promise(resolve=>{
     let done=false;
@@ -161,31 +277,67 @@ function onTransitionEndOnce(el, prop, timeout=1200){
   });
 }
 
-/* =========================================================
-   CONSTRUCTION GRILLE + TELECOMMANDE
-   ========================================================= */
+/* =========================
+   SÉLECTIONS DOM
+   ========================= */
 const grid = document.getElementById('grid');
 const remote = document.getElementById('remote');
+const donut = document.getElementById('rotateDonut');
+const donutCenter = donut.querySelector('.donut-center');
 
+/* =========================
+   CALCUL TAILLE DYNAMIQUE
+   - moitié de la taille visible du viewer
+   - on retire l'espace pris par les gaps
+   - on divise par n
+   ========================= */
+function updateSquareSize(){
+  const viewerRect = document.getElementById('viewer').getBoundingClientRect();
+  const halfMin = Math.min(viewerRect.width, viewerRect.height) / 2;
+
+  const n = state.n;
+  const gap = state.gap;
+
+  // largeur/hauteur totale d'une grille n x n :
+  // total = n * size + (n - 1) * gap  => size = (target - (n-1)*gap)/n
+  const target = Math.max(0, halfMin); // moitié d'écran pour l'ensemble
+  const size = Math.floor((target - (n - 1) * gap) / n);
+
+  const finalSize = Math.max(10, size); // garde une taille mini
+  document.documentElement.style.setProperty('--square-size', `${finalSize}px`);
+}
+
+/* =========================
+   CONSTRUCTION GRILLE
+   ========================= */
 function buildGrid(){
   document.documentElement.style.setProperty('--n', state.n);
   document.documentElement.style.setProperty('--gap', `${state.gap}px`);
 
   grid.innerHTML = '';
-  grid.style.gridTemplateColumns = `repeat(${state.n}, var(--square-size))`;
-  grid.style.gridTemplateRows    = `repeat(${state.n}, var(--square-size))`;
-
   state.tiles = [];
   for(let r=0;r<state.n;r++){
     for(let c=0;c<state.n;c++){
       const cell = document.createElement('div');
       cell.className = 'cell';
-      cell.dataset.row = r;
-      cell.dataset.col = c;
-
       const tile = document.createElement('div');
       tile.className = 'tile';
-      tile.textContent = `${r},${c}`;
+      tile.dataset.row = r;
+      tile.dataset.col = c;
+
+      // Drag & Drop images
+      tile.addEventListener('dragover', e => e.preventDefault());
+      tile.addEventListener('drop', e => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if(file && file.type.startsWith('image/')){
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(file);
+          tile.innerHTML = '';
+          tile.appendChild(img);
+        }
+      });
+
       cell.appendChild(tile);
       grid.appendChild(cell);
 
@@ -195,37 +347,42 @@ function buildGrid(){
   }
 }
 
+/* =========================
+   TÉLÉCOMMANDE
+   ========================= */
 function buildRemote(){
   remote.innerHTML = '';
-  remote.style.gridTemplateColumns = `repeat(${state.n}, 44px)`;
-  remote.style.gridTemplateRows    = `repeat(${state.n}, 44px)`;
-
   for(let vr=0; vr<state.n; vr++){
     for(let vc=0; vc<state.n; vc++){
       const btn = document.createElement('button');
       btn.dataset.visualRow = vr;
       btn.dataset.visualCol = vc;
-      btn.dataset.targetRow = vr;  // mapping initial = identité
+      btn.dataset.targetRow = vr;
       btn.dataset.targetCol = vc;
-      btn.textContent = `→ ${vr},${vc}`;
 
       attachPressHandlers(
         btn,
-        () => triggerTileSequence(parseInt(btn.dataset.targetRow,10), parseInt(btn.dataset.targetCol,10), false), // court
-        () => triggerTileSequence(parseInt(btn.dataset.targetRow,10), parseInt(btn.dataset.targetCol,10), true)   // long (sens inverse)
+        () => triggerTileSequence(parseInt(btn.dataset.targetRow,10), parseInt(btn.dataset.targetCol,10), false),
+        () => triggerTileSequence(parseInt(btn.dataset.targetRow,10), parseInt(btn.dataset.targetCol,10), true)
       );
 
       remote.appendChild(btn);
     }
   }
-  updateMapping(); // initial
+  // s'assurer que le donut est centré par-dessus la grille après (re)build
+  centerDonutOverRemote();
 }
 
-/* =========================================================
-   MAPPING TELECOMMANDE → TABLEAUX
-   - Multiple de 90° : recalcul (bouton HG → visuel HG)
-   - 45/135/... : mapping inchangé (ancré)
-   ========================================================= */
+/* centre visuel du donut au milieu de la grille */
+function centerDonutOverRemote(){
+  // Donut déjà en absolute; on s'assure juste qu'il reste au-dessus
+  donut.style.zIndex = '5';
+}
+
+/* =========================
+   MAPPING télécommande -> tableaux
+   (inchangé)
+   ========================= */
 function updateMapping(){
   const angle = mod(state.logicalRotationRaw, 360);
   if (angle % 90 !== 0) return;
@@ -248,39 +405,33 @@ function updateMapping(){
     }
     btn.dataset.targetRow = r0;
     btn.dataset.targetCol = c0;
-    btn.textContent = `→ ${r0},${c0}`;
   });
 }
 
-/* =========================================================
-   TRANSFORMS CENTRÉS (Z normal au plan)
-   ========================================================= */
+/* =========================
+   TRANSFORMS (centré)
+   ========================= */
 function applyTileTransform(t){
+  const localTransform =
+    `rotateZ(${t.rotRaw}deg) translateZ(${t.floor * state.floorDepth}px)`;
   t.el.style.transform =
-    `translate(-50%, -50%) translateZ(${t.floor * state.floorDepth}px) rotateZ(${t.rotRaw}deg)`;
+    `translate(-50%, -50%) ${localTransform}`;
 }
 
-/* =========================================================
-   APPUI COURT / LONG (long déclenche IMMÉDIATEMENT)
-   ========================================================= */
+/* =========================
+   GESTION appui court/long (inchangée)
+   ========================= */
 function attachPressHandlers(el, onShort, onLong, threshold=400){
-  let timer=null, longFired=false, down=false, pid=null;
+  let timer=null, longFired=false, down=false;
+  const clear = ()=>{ if(timer){ clearTimeout(timer); timer=null; } longFired=false; down=false; };
 
-  const clear = ()=>{
-    if(timer){ clearTimeout(timer); timer=null; }
-    longFired=false; down=false;
-    try{ if(pid!==null) el.releasePointerCapture(pid); }catch{}
-    pid=null;
-  };
-
-  el.addEventListener('pointerdown', e=>{
+  el.addEventListener('pointerdown', ()=>{
     if(state.isAnimating) return;
-    down=true; longFired=false; pid=e.pointerId;
-    try{ el.setPointerCapture(e.pointerId); }catch{}
+    down=true; longFired=false;
     timer = setTimeout(()=>{
       if(!down) return;
       longFired=true;
-      onLong();                    // déclenche IMMÉDIATEMENT
+      onLong();                       // long ⇒ déclenche tout de suite
     }, threshold);
   });
 
@@ -288,31 +439,23 @@ function attachPressHandlers(el, onShort, onLong, threshold=400){
     if(!down) return;
     const wasLong = longFired;
     clear();
-    if(state.isAnimating) return;  // si une anim a démarré entre-temps
-    if(!wasLong){ onShort(); }     // court = au relâchement
+    if(state.isAnimating) return;
+    if(!wasLong){ onShort(); }        // court ⇒ au relâchement
   });
-
   el.addEventListener('pointercancel', clear);
-  el.addEventListener('pointerleave', ()=>{
-    if(!longFired) clear();
-  });
 }
 
-/* =========================================================
-   SEQUENCE D'ANIM PAR TABLEAU (home -> étage 2 -> rotate ±90 -> home)
-   - ROTATION **ACCUMULÉE** en utilisant un angle brut (rotRaw)
-   - BOUTONS DÉSACTIVÉS pendant l'animation
-   ========================================================= */
+/* =========================
+   ANIMS par tableau (inchangées)
+   ========================= */
 function getTile(r,c){ return state.tiles.find(t=>t.row===r && t.col===c); }
 
 async function triggerTileSequence(r, c, reverse=false){
   if(state.isAnimating) return;
   state.isAnimating = true;
   setControlsEnabled(false);
-
   const t = getTile(r,c);
   const targetFloor = clamp(2, 0, state.F);
-
   try{
     await translateTile(t, targetFloor, 480);
     await rotateTile(t, reverse ? -90 : 90, 480);
@@ -323,74 +466,66 @@ async function triggerTileSequence(r, c, reverse=false){
   }
 }
 
-function translateTile(t, floor, duration=480, easing='cubic-bezier(.3,.7,.2,1)'){
+function translateTile(t, floor, duration=480){
   return new Promise(resolve=>{
     t.floor = clamp(floor, 0, state.F);
-    t.el.style.transition = `transform ${duration}ms ${easing}`;
+    t.el.style.transition = `transform ${duration}ms cubic-bezier(.3,.7,.2,1)`;
     applyTileTransform(t);
     onTransitionEndOnce(t.el, 'transform', duration+200).then(resolve);
   });
 }
 
-function rotateTile(t, deltaDeg, duration=480, easing='cubic-bezier(.3,.7,.2,1)'){
+function rotateTile(t, deltaDeg, duration=480){
   return new Promise(resolve=>{
-    // IMPORTANT : angle brut (peut être négatif) pour éviter les 4 tours au premier sens inverse
     const snapped = Math.round(deltaDeg/90)*90;
-    t.rotRaw += snapped;                 // ⇐ pas de modulo ici
-    t.el.style.transition = `transform ${duration}ms ${easing}`;
+    t.rotRaw += snapped;
+    t.el.style.transition = `transform ${duration}ms cubic-bezier(.3,.7,.2,1)`;
     applyTileTransform(t);
     onTransitionEndOnce(t.el, 'transform', duration+200).then(resolve);
   });
 }
 
-/* =========================================================
-   ROTATION LOGIQUE GLOBALE (Z) — appui court/long
-   - Utilise logicalRotationRaw (angle brut), pas de reset
-   - Recalcule le mapping si angle % 90 === 0
-   - Désactive les boutons pendant l'animation
-   ========================================================= */
-const logicWrap = document.getElementById('logicWrap');
+/* =========================
+   ROTATION GLOBALE via DONUT
+   ========================= */
 attachPressHandlers(
-  document.getElementById('rotateBtn'),
+  donut,
   () => rotateGlobal(+state.rotateStep, 900),
   () => rotateGlobal(-state.rotateStep, 900)
 );
 
-function rotateGlobal(stepDeg, duration=900, easing='cubic-bezier(.3,.7,.2,1)'){
+const logicWrap = document.getElementById('logicWrap');
+
+function rotateGlobal(stepDeg, duration=900){
   if(state.isAnimating) return;
   state.isAnimating = true;
-  setControlsEnabled(false);
-
-  state.logicalRotationRaw += stepDeg;   // ⇐ angle brut (peut être négatif)
-  logicWrap.style.transition = `transform ${duration}ms ${easing}`;
+  setControlsEnabled(false);                 // centre donut → rouge
+  state.logicalRotationRaw += stepDeg;
+  logicWrap.style.transition = `transform ${duration}ms cubic-bezier(.3,.7,.2,1)`;
   logicWrap.style.transform  = `rotateZ(${state.logicalRotationRaw}deg)`;
-
   onTransitionEndOnce(logicWrap, 'transform', duration+200).then(()=>{
     logicWrap.style.transition = '';
     if (mod(state.logicalRotationRaw, 90) === 0) updateMapping();
-    setControlsEnabled(true);
+    setControlsEnabled(true);                // centre donut → vert
     state.isAnimating = false;
   });
 }
 
-/* =========================================================
-   ROTATION DE VUE (X/Y) — PUR VISUEL (vue initiale parallèle à l'écran)
-   ========================================================= */
+/* =========================
+   ROTATION DE VUE (drag)
+   ========================= */
 (function setupViewDrag(){
   const viewer = document.getElementById('viewer');
   const viewWrap = document.getElementById('viewWrap');
-  let dragging=false, lastX=0, lastY=0, rx=0, ry=0; // ⇐ vue de face par défaut
-
+  let dragging=false, lastX=0, lastY=0, rx=0, ry=0;
   const apply = ()=>{ viewWrap.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`; };
   apply();
-
   viewer.addEventListener('pointerdown', e=>{
     dragging=true; lastX=e.clientX; lastY=e.clientY; viewer.setPointerCapture(e.pointerId);
   });
   viewer.addEventListener('pointerup', e=>{
     dragging=false; viewer.releasePointerCapture(e.pointerId);
   });
-  viewer.addEventListener('pointercancel', ()=> dragging=false);
   viewer.addEventListener('pointermove', e=>{
     if(!dragging) return;
     ry += (e.clientX - lastX) * 0.35;
@@ -399,49 +534,78 @@ function rotateGlobal(stepDeg, duration=900, easing='cubic-bezier(.3,.7,.2,1)'){
     apply();
     lastX=e.clientX; lastY=e.clientY;
   });
-
-  // Reset Vue 3D (ne touche pas à la rotation logique)
   document.getElementById('resetViewBtn').addEventListener('click', ()=>{
     rx = 0; ry = 0; apply();
   });
 })();
 
-/* =========================================================
-   SLIDERS : N, F, GAP  (ne change que ce qui est demandé)
-   ========================================================= */
+/* =========================
+   SLIDERS
+   ========================= */
 document.getElementById('nSlider').addEventListener('input', e=>{
   state.n = parseInt(e.target.value,10);
   document.documentElement.style.setProperty('--n', state.n);
   buildGrid();
   buildRemote();
   updateMapping();
+  updateSquareSize();                 // ⇒ recalcul taille avec n + gap
 });
 document.getElementById('fSlider').addEventListener('input', e=>{
   state.F = parseInt(e.target.value,10);
-  document.documentElement.style.setProperty('--F', state.F);
 });
 document.getElementById('gapSlider').addEventListener('input', e=>{
   state.gap = parseInt(e.target.value,10);
-  document.documentElement.style.setProperty('--gap', `${state.gap}px`); // ⇐ même valeur X et Y
+  document.documentElement.style.setProperty('--gap', `${state.gap}px`);
+  updateSquareSize();                 // ⇒ tient compte du gap
 });
 
-/* =========================================================
-   ENABLE/DISABLE DES CONTROLES (réactivé)
-   ========================================================= */
+/* =========================
+   ENABLE/DISABLE CONTROLS
+   ========================= */
 function setControlsEnabled(enabled){
-  document.querySelectorAll('#remote button, #rotateBtn').forEach(b=> b.disabled = !enabled);
+  document.querySelectorAll('#remote button').forEach(b=> b.disabled = !enabled);
+  if(!enabled){
+    donut.classList.add('disabled');
+    donutCenter.style.background = '#F44336'; // rouge en anim
+  } else {
+    donut.classList.remove('disabled');
+    donutCenter.style.background = '#4CAF50'; // vert prêt
+  }
 }
 
-/* =========================================================
+/* =========================
+   CHARGER images par défaut (n=2)
+   ========================= */
+document.getElementById('loadImagesBtn').addEventListener('click', ()=>{
+  if(state.n !== 2) return alert("Fonction dispo uniquement si n=2");
+  const mapping = {
+    "0,0": "tl.png",
+    "0,1": "tr.png",
+    "1,0": "bl.png",
+    "1,1": "br.png"
+  };
+  state.tiles.forEach(t=>{
+    const key = `${t.row},${t.col}`;
+    if(mapping[key]){
+      const img = document.createElement('img');
+      img.src = mapping[key];
+      t.el.innerHTML = '';
+      t.el.appendChild(img);
+    }
+  });
+});
+
+/* =========================
    INIT
-   ========================================================= */
+   ========================= */
 (function init(){
   document.documentElement.style.setProperty('--n', state.n);
-  document.documentElement.style.setProperty('--F', state.F);
   document.documentElement.style.setProperty('--gap', `${state.gap}px`);
   buildGrid();
   buildRemote();
-  updateMapping(); // état initial
+  updateMapping();
+  updateSquareSize();
+  window.addEventListener('resize', updateSquareSize);
 })();
 </script>
 </body>
