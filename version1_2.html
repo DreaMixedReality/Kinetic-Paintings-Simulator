@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Kinetic Paintings Simulator — v mise à jour</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --remote-size: 200px;
+      --gap: 18px;
+      --viewer-size: 520px;
+      --thickness: 36px;
+      /* épaisseur du cadre / profondeur du pavé */
+      --max-front: 160px;
+      /* distance front pour position 2 */
+      --bg: #f0f0f0;
+      --control-width: 320px;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      padding: 20px;
+      box-sizing: border-box;
+      display: flex;
+      justify-content: center;
+    }
+
+    .page {
+      display: flex;
+      gap: var(--gap);
+      align-items: flex-start;
+      width: 100%;
+      max-width: 1200px;
+    }
+
+    /* LEFT */
+    .left-col {
+      width: var(--remote-size);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #remote {
+      width: var(--remote-size);
+      height: var(--remote-size);
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      grid-template-rows: 1fr auto 1fr;
+      gap: 6%;
+      align-items: center;
+      justify-items: center;
+      position: relative;
+    }
+
+    #btn-tl {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    #btn-tr {
+      grid-column: 3;
+      grid-row: 1;
+    }
+
+    #btn-bl {
+      grid-column: 1;
+      grid-row: 3;
+    }
+
+    #btn-br {
+      grid-column: 3;
+      grid-row: 3;
+    }
+
+    .corner-btn {
+      width: 120%;
+      height: 120%;
+      background: #000;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      outline: none;
+      transition: transform .09s ease, box-shadow .12s;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .corner-btn:active {
+      transform: scale(.96);
+    }
+
+    .corner-btn.disabled {
+      pointer-events: none;
+      background: #222;
+      box-shadow: none;
+    }
+
+    #center-btn {
+      grid-column: 2;
+      grid-row: 2;
+      width: 74px;
+      height: 74px;
+      border-radius: 50%;
+      background: radial-gradient(circle at center, rgba(0, 0, 0, 0.0) 30%, #000 30%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+      transition: transform .09s;
+    }
+
+    #center-btn:active {
+      transform: scale(.97);
+    }
+
+    #center-btn.disabled {
+      pointer-events: none;
+      background: radial-gradient(circle at center, rgba(0, 0, 0, 0.0) 30%, #222 30%);
+      box-shadow: none;
+    }
+
+    #center-indicator {
+      width: 42%;
+      height: 42%;
+      border-radius: 50%;
+      background: green;
+      transition: background .12s;
+      pointer-events: none;
+      align-items: center;
+    }
+
+    .anim-play {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      align-items: center;
+    }
+
+    .anim-play input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    .anim-play button {
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 0;
+      background: #111;
+      color: #fff;
+    }
+
+    /* camera controls */
+    .cam-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      align-items: center;
+    }
+
+    .cam-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .cam-grid button {
+      padding: 6px;
+      border-radius: 6px;
+      border: 0;
+      cursor: pointer;
+      background: #222;
+      color: #fff;
+    }
+
+    /* VIEWER */
+    .viewer-wrap {
+      width: var(--viewer-size);
+      height: var(--viewer-size);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 1400px;
+      user-select: none;
+    }
+
+    #camera {
+      width: 420px;
+      height: 420px;
+      transform-style: preserve-3d;
+      transition: transform .18s ease;
+    }
+
+    #stage {
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+      position: relative;
+    }
+
+    .square-wrapper {
+      position: absolute;
+      width: 50%;
+      height: 50%;
+      box-sizing: border-box;
+      border-radius: 8px;
+      overflow: visible;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      transform-origin: center center;
+      will-change: transform;
+      pointer-events: auto;
+    }
+
+    .square-wrapper.dragover {
+      outline: 3px dashed rgba(0, 0, 0, 0.25);
+    }
+
+    .panel {
+      position: absolute;
+      inset: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      box-sizing: border-box;
+      background: #999;
+      backface-visibility: hidden;
+      transform-style: preserve-3d;
+    }
+
+    .panel img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .side {
+      position: absolute;
+      width: var(--thickness);
+      height: 100%;
+      top: 0;
+      left: 0;
+      transform-origin: left center;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 4px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+    }
+
+    .side.right {
+      left: auto;
+      right: 0;
+      transform-origin: right center;
+    }
+
+    .side.top {
+      width: 100%;
+      height: var(--thickness);
+      top: 0;
+      left: 0;
+      transform-origin: center top;
+    }
+
+    .side.bottom {
+      width: 100%;
+      height: var(--thickness);
+      bottom: 0;
+      top: auto;
+      left: 0;
+      transform-origin: center bottom;
+    }
+
+    /* initial positions */
+    #sq0 {
+      top: 0;
+      left: 0;
+      background: red;
+    }
+
+    #sq1 {
+      top: 0;
+      right: 0;
+      background: blue;
+    }
+
+    #sq2 {
+      bottom: 0;
+      left: 0;
+      background: green;
+    }
+
+    #sq3 {
+      bottom: 0;
+      right: 0;
+      background: orange;
+    }
+
+    /* RIGHT controls */
+    .right-col {
+      width: var(--control-width);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .panel-controls {
+      padding: 12px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .slider-group label {
+      width: 160px;
+      font-size: 13px;
+      color: #333;
+    }
+
+    .slider-group input[type="range"] {
+      flex: 1;
+    }
+
+    .file-inputs {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .file-control {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .note {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #333;
+      text-align: center;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .small-btn {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 0;
+      cursor: pointer;
+      background: #111;
+      color: #fff;
+    }
+
+    @media (max-width:1100px) {
+      :root {
+        --viewer-size: 420px;
+        --control-width: 300px;
+      }
+
+      .page {
+        padding: 8px;
+      }
+    }
+
+    @media (max-width:880px) {
+      .page {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .left-col,
+      .right-col {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+      }
+    }
+
+    .remote-wrapper {
+      background: white;
+      border: 4px solid black;
+      border-radius: 8px;
+      /* optionnel : coins arrondis */
+      padding: 12px;
+      position: relative;
+      z-index: 0;
+      /* bas pour que ce soit "dans le fond" */
+    }
+
+    .remote-wrapper * {
+      position: relative;
+      z-index: 1;
+      /* contenu au-dessus du fond */
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <!-- LEFT -->
+    <div class="left-col" aria-label="Télécommande et animations">
+      <div class="remote-wrapper">
+        <div id="remote" role="application" aria-label="Télécommande">
+          <button class="corner-btn" id="btn-tl" title="Haut gauche" aria-label="Haut gauche"></button>
+          <button class="corner-btn" id="btn-tr" title="Haut droite" aria-label="Haut droite"></button>
+          <button class="corner-btn" id="btn-bl" title="Bas gauche" aria-label="Bas gauche"></button>
+          <button class="corner-btn" id="btn-br" title="Bas droite" aria-label="Bas droite"></button>
+          <div id="center-btn" role="button" title="Tourner tout">
+            <div id="center-indicator" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="anim-play" style="width:100%;">
+        <input id="animId" type="text" placeholder="ID animation (ex: diag-rotate)">
+        <button id="playAnim">Jouer animation par ID</button>
+      </div>
+
+      <div style="width:100%; display:flex; flex-direction:column; gap:6px; align-items:center;">
+        <button id="loadParent" class="small-btn" title="Charger ../tl.png ../tr.png ../bl.png ../br.png">Charger images
+          ../ (parent)</button>
+      </div>
+
+      <div class="cam-controls" style="width:100%;">
+        <div style="font-size:13px;">Contrôles caméra</div>
+        <div class="cam-grid">
+          <button id="cam-up">▲</button>
+          <button id="cam-reset">⟳</button>
+          <button id="cam-down">▼</button>
+          <button id="cam-left">◀</button>
+          <div style="background:transparent;"></div>
+          <button id="cam-right">▶</button>
+        </div>
+        <div style="font-size:12px;color:#444;text-align:center;margin-top:4px;">Glisser la vue pour orienter la caméra
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="viewer-wrap" id="viewerWrap" aria-label="Viewer 3D">
+      <div id="camera" style="transform: rotateX(12deg) rotateY(-22deg) translateZ(0);">
+        <div id="stage" data-index="4" aria-label="Zone des pavés">
+          <div id="sq0" class="square-wrapper" data-index="0" aria-label="TL pavé">
+            <div class="panel"><img class="square-img" alt="TL"></div>
+            <div class="side left"></div>
+            <div class="side right"></div>
+            <div class="side top"></div>
+            <div class="side bottom"></div>
+          </div>
+          <div id="sq1" class="square-wrapper" data-index="1" aria-label="TR pavé">
+            <div class="panel"><img class="square-img" alt="TR"></div>
+            <div class="side left"></div>
+            <div class="side right"></div>
+            <div class="side top"></div>
+            <div class="side bottom"></div>
+          </div>
+          <div id="sq2" class="square-wrapper" data-index="2" aria-label="BL pavé">
+            <div class="panel"><img class="square-img" alt="BL"></div>
+            <div class="side left"></div>
+            <div class="side right"></div>
+            <div class="side top"></div>
+            <div class="side bottom"></div>
+          </div>
+          <div id="sq3" class="square-wrapper" data-index="3" aria-label="BR pavé">
+            <div class="panel"><img class="square-img" alt="BR"></div>
+            <div class="side left"></div>
+            <div class="side right"></div>
+            <div class="side top"></div>
+            <div class="side bottom"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+
+    <!-- SLIDERS -->
+
+
+    <div class="right-col">
+      <div class="panel-controls">
+        <h4 style="margin:0 0 8px 0;">Durée d'appui long</h4>
+        <div class="slider-group">
+          <label for="long-press-duration">ms</label>
+          <input id="long-press-duration" type="range" min="100" max="3000" value="400">
+          <span id="long-press-duration-val">400</span>
+        </div>
+      </div>
+      <div class="panel-controls">
+        <h4 style="margin:0 0 8px 0;">Vitesse globale</h4>
+        <div class="slider-group"><label for="rot-speed-global">Globale Rotation Speed (ms)</label><input
+            id="rot-speed-global" type="range" min="100" max="16000" value="1000"><span
+            id="rot-speed-global-val">1000</span>
+        </div>
+        <div class="slider-group"><label for="tra-speed-global">Globale Translation Speed (ms)</label><input
+            id="tra-speed-global" type="range" min="100" max="16000" value="1000"><span
+            id="tra-speed-global-val">1000</span>
+        </div>
+      </div>
+      <div class="panel-controls">
+        <h4 style="margin:0 0 8px 0;">Vitesse rotation</h4>
+        <div class="slider-group"><label for="speed-all">Vitesse rotation cadre (ms)</label><input id="speed-all"
+            type="range" min="100" max="16000" value="1000"><span id="speed-all-val">1000</span></div>
+        <div class="slider-group"><label for="speed-0">TL rot (ms)</label><input id="speed-0" type="range" min="100"
+            max="16000" value="1000"><span id="speed-0-val">1000</span></div>
+        <div class="slider-group"><label for="speed-1">TR rot (ms)</label><input id="speed-1" type="range" min="100"
+            max="16000" value="1000"><span id="speed-1-val">1000</span></div>
+        <div class="slider-group"><label for="speed-2">BL rot (ms)</label><input id="speed-2" type="range" min="100"
+            max="16000" value="1000"><span id="speed-2-val">1000</span></div>
+        <div class="slider-group"><label for="speed-3">BR rot (ms)</label><input id="speed-3" type="range" min="100"
+            max="16000" value="1000"><span id="speed-3-val">1000</span></div>
+      </div>
+
+      <div class="panel-controls">
+        <h4 style="margin:0 0 8px 0;">Vitesse Translation</h4>
+        <div class="slider-group"><label for="trans-speed-all">Vitesse translation cadre (ms)</label><input
+            id="trans-speed-all" type="range" min="100" max="16000" value="1000"><span
+            id="trans-speed-all-val">1000</span></div>
+        <div class="slider-group"><label for="trans-speed-0">TL trans (ms)</label><input id="trans-speed-0" type="range"
+            min="100" max="16000" value="1000"><span id="trans-speed-0-val">1000</span></div>
+        <div class="slider-group"><label for="trans-speed-1">TR trans (ms)</label><input id="trans-speed-1" type="range"
+            min="100" max="16000" value="1000"><span id="trans-speed-1-val">1000</span></div>
+        <div class="slider-group"><label for="trans-speed-2">BL trans (ms)</label><input id="trans-speed-2" type="range"
+            min="100" max="16000" value="1000"><span id="trans-speed-2-val">1000</span></div>
+        <div class="slider-group"><label for="trans-speed-3">BR trans (ms)</label><input id="trans-speed-3" type="range"
+            min="100" max="16000" value="1000"><span id="trans-speed-3-val">1000</span></div>
+
+        <div style="margin-top:8px;">
+          <div style="font-size:13px;margin-bottom:6px;">Position courante (0=home,1=mid,2=front) :</div>
+          <div class="row" id="pos-indicators">
+            <div style="font-size:13px;">TL:<b id="pos-0">0</b></div>
+            <div style="font-size:13px;">TR:<b id="pos-1">0</b></div>
+            <div style="font-size:13px;">BL:<b id="pos-2">0</b></div>
+            <div style="font-size:13px;">BR:<b id="pos-3">0</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-controls">
+        <h4 style="margin:0 0 8px 0;">Images / uploads</h4>
+        <div class="file-inputs">
+          <div class="file-control"><label for="img-0">Image TL</label><input id="img-0" type="file"
+              accept="image/*"><button id="clear-0" type="button" class="small-btn">Réinitialiser</button></div>
+          <div class="file-control"><label for="img-1">Image TR</label><input id="img-1" type="file"
+              accept="image/*"><button id="clear-1" type="button" class="small-btn">Réinitialiser</button></div>
+          <div class="file-control"><label for="img-2">Image BL</label><input id="img-2" type="file"
+              accept="image/*"><button id="clear-2" type="button" class="small-btn">Réinitialiser</button></div>
+          <div class="file-control"><label for="img-3">Image BR</label><input id="img-3" type="file"
+              accept="image/*"><button id="clear-3" type="button" class="small-btn">Réinitialiser</button></div>
+        </div>
+      </div>
+
+      <div class="note">Glisser & déposer une image sur un pavé ou utiliser "Image ...". Les images restent locales
+        (URL.createObjectURL). Pour charger ../*.png, préférez servir le fichier via un serveur local (sinon fetch via
+        file:// peut être bloqué).</div>
+    </div>
+  </div>
+
+  <script>
+    /* ----------------- RÉFÉRENCES DOM ----------------- */
+    const squares = [...document.querySelectorAll('.square-wrapper')];
+    const panels = squares.map(s => s.querySelector('.panel'));
+    const imgs = squares.map(s => s.querySelector('.square-img'));
+    const buttons = {
+      tl: document.getElementById('btn-tl'),
+      tr: document.getElementById('btn-tr'),
+      bl: document.getElementById('btn-bl'),
+      br: document.getElementById('btn-br'),
+      center: document.getElementById('center-btn')
+    };
+    const indicator = document.getElementById('center-indicator');
+    const container = document.getElementById('container');
+    const camera = document.getElementById('camera');
+    const stage = document.getElementById('stage');
+    const viewerWrap = document.getElementById('viewerWrap');
+    let longPressDuration = 400; // valeur par défaut en ms
+
+
+    // Position initiale en pourcentage ou pixels (selon ton CSS)
+    function updateSquarePositions(gapValue) {
+      const percentGap = gapValue + '%';
+      // Exemple : modifier directement la taille et la position
+      document.getElementById('sq0').style.top = '0';
+      document.getElementById('sq0').style.left = '0';
+
+      document.getElementById('sq1').style.top = '0';
+      document.getElementById('sq1').style.right = '0';
+
+      document.getElementById('sq2').style.bottom = '0';
+      document.getElementById('sq2').style.left = '0';
+
+      document.getElementById('sq3').style.bottom = '0';
+      document.getElementById('sq3').style.right = '0';
+
+      // Si tu veux vraiment que ça "écarte" les carrés, il faut jouer sur transform translate
+      squares.forEach((el, i) => {
+        let x = 0, y = 0;
+        if (i === 1) x = gapValue;
+        if (i === 2) y = gapValue;
+        if (i === 3) { x = gapValue; y = gapValue; }
+        el.style.transform = `translate(${x}px, ${y}px)`;
+      });
+    }
+
+    document.getElementById('long-press-duration').addEventListener('input', (e) => {
+      longPressDuration = parseInt(e.target.value, 10);
+      document.getElementById('long-press-duration-val').textContent = longPressDuration;
+    });
+
+    document.getElementById('rot-speed-global').addEventListener('input', (e) => {
+      const newValue = e.target.value;
+
+      // Met à jour le texte du global
+      document.getElementById('rot-speed-global-val').textContent = newValue;
+
+      // Boucle sur les 4 peintures
+      for (let i = 0; i < 4; i++) {
+        // Vitesse rotation
+        const speedSlider = document.getElementById(`speed-${i}`);
+        const speedVal = document.getElementById(`speed-${i}-val`);
+        speedSlider.value = newValue;
+        if (speedVal) speedVal.textContent = newValue;
+      }
+
+      // Vitesse "all" (si tu as ces sliders groupés)
+      const speedAll = document.getElementById('speed-all');
+      const speedAllVal = document.getElementById('speed-all-val');
+      if (speedAll) speedAll.value = newValue;
+      if (speedAllVal) speedAllVal.textContent = newValue;
+    });
+
+    document.getElementById('tra-speed-global').addEventListener('input', (e) => {
+      const newValue = e.target.value;
+
+      // Met à jour le texte du global
+      document.getElementById('tra-speed-global-val').textContent = newValue;
+
+      // Boucle sur les 4 peintures
+      for (let i = 0; i < 4; i++) {
+
+        // Vitesse translation
+        const transSlider = document.getElementById(`trans-speed-${i}`);
+        const transVal = document.getElementById(`trans-speed-${i}-val`);
+        transSlider.value = newValue;
+        if (transVal) transVal.textContent = newValue;
+      }
+
+      // Vitesse "all" (si tu as ces sliders groupés)
+
+      const transAll = document.getElementById('trans-speed-all');
+      const transAllVal = document.getElementById('trans-speed-all-val');
+      if (transAll) transAll.value = newValue;
+      if (transAllVal) transAllVal.textContent = newValue;
+    });
+
+
+    ['all', '0', '1', '2', '3'].forEach(k => {
+      const el = document.getElementById(k === 'all' ? 'speed-all' : `speed-${k}`);
+      const val = document.getElementById(k === 'all' ? 'speed-all-val' : `speed-${k}-val`);
+      if (el && val) el.addEventListener('input', () => val.textContent = el.value);
+    });
+    ['all', '0', '1', '2', '3'].forEach(k => {
+      const el = document.getElementById(k === 'all' ? 'trans-speed-all' : `trans-speed-${k}`);
+      const val = document.getElementById(k === 'all' ? 'trans-speed-all-val' : `trans-speed-${k}-val`);
+      if (el && val) el.addEventListener('input', () => val.textContent = el.value);
+    });
+    const posIndicators = [0, 1, 2, 3].map(i => document.getElementById(`pos-${i}`));
+
+    const imageInputs = [0, 1, 2, 3].map(i => document.getElementById(`img-${i}`));
+    const clearBtns = [0, 1, 2, 3].map(i => document.getElementById(`clear-${i}`));
+
+    const animInput = document.getElementById('animId');
+    const playAnimBtn = document.getElementById('playAnim');
+    const loadParentBtn = document.getElementById('loadParent');
+
+    /* camera UI */
+    const camUp = document.getElementById('cam-up');
+    const camDown = document.getElementById('cam-down');
+    const camLeft = document.getElementById('cam-left');
+    const camRight = document.getElementById('cam-right');
+    const camReset = document.getElementById('cam-reset');
+
+    /* ----------------- ÉTAT ----------------- */
+    const rotationCounts = [0, 0, 0, 0]; // 1 = +90 deg
+    const translationPos = [0, 0, 0, 0]; // 0 home,1 mid,2 front
+    const imageURLs = [null, null, null, null];
+    const perSquareAnimating = [false, false, false, false];
+    let globalAnimatingCount = 0;
+    const maxFront = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--max-front')) || 80;
+    const thickness = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--thickness')) || 25;
+
+    /* stage logical rotation (counts of 90deg) */
+    stage._rot = 0;
+
+    /* camera angles (deg) controlled by user independently) */
+    const cameraAngles = { x: 0, y: 0 };
+
+    /* ----------------- UI HELPERS ----------------- */
+    function setAnimatingStart() {
+      globalAnimatingCount++;
+      indicator.style.background = 'red';
+      Object.values(buttons).forEach(b => b.classList.add('disabled'));
+    }
+    function setAnimatingEnd() {
+      globalAnimatingCount = Math.max(0, globalAnimatingCount - 1);
+      if (globalAnimatingCount === 0) {
+        indicator.style.background = 'green';
+        Object.values(buttons).forEach(b => b.classList.remove('disabled'));
+      }
+    }
+    function updatePosIndicators() { translationPos.forEach((p, i) => posIndicators[i].textContent = String(p)); }
+    updatePosIndicators();
+
+    function updateCameraTransform() {
+      camera.style.transform = `rotateX(${cameraAngles.x}deg) rotateY(${cameraAngles.y}deg) translateZ(0)`;
+    }
+    updateCameraTransform();
+
+    /* helper to apply per-pavé transforms (z + rotation) */
+    function applyTransformForIndex(i) {
+      const el = squares[i];
+      const rotDeg = rotationCounts[i] * 90;
+      const z = translationPos[i] * (maxFront / 2); // mid = maxFront/2, front = maxFront
+      el.style.transform = `translateZ(${z}px) rotate(${rotDeg}deg)`;
+      const panel = panels[i];
+      panel.style.transform = `translateZ(${thickness / 2}px)`;
+      // set sides transforms (approx)
+      const left = squares[i].querySelector('.side.left');
+      const right = squares[i].querySelector('.side.right');
+      const top = squares[i].querySelector('.side.top');
+      const bottom = squares[i].querySelector('.side.bottom');
+      if (left) left.style.transform = `translateZ(${thickness / 2}px) rotateY(90deg)`;
+      if (right) right.style.transform = `translateZ(${thickness / 2}px) rotateY(90deg)`;
+      if (top) top.style.transform = `translateZ(${thickness / 2}px) rotateX(90deg)`;
+      if (bottom) bottom.style.transform = `translateZ(${thickness / 2}px) rotateX(90deg)`;
+    }
+    for (let i = 0; i < 4; i++) applyTransformForIndex(i);
+
+    /* ----------------- Mapping bouton visuel -> index interne ----------------- */
+    /* visualOrder = [tl,tr,br,bl] mapping -> internal indices [0,1,3,2]
+       We must consider stage._rot (nombre de quarts de rotation Z appliqués au stage).
+       If stage._rot is +1, what was visually TL is actually internal pos rotated one step.
+    */
+    function getVisualIndexForButton(buttonKey) {
+      if (buttonKey === 'center') return null;
+      const visualOrder = ['tl', 'tr', 'br', 'bl'];
+      const idxMap = [0, 1, 3, 2];
+      let pos = visualOrder.indexOf(buttonKey);
+      const rot = ((stage._rot % 4) + 4) % 4; // stage rotation in quarters
+      // we reverse the stage rotation to map button position back to internal index
+      pos = (pos - rot + 4) % 4;
+      return idxMap[pos];
+    }
+
+    /* ----------------- ROTATIONS (promisifiées) ----------------- */
+    /* Check rules for rotation allowed (same rules as demandé) */
+    function canRotateIndex(idx) {
+      if (translationPos[idx] === 0) return false;
+      const samePlane = [];
+      translationPos.forEach((p, i) => { if (p === translationPos[idx] && p > 0) samePlane.push(i); });
+      if (samePlane.length === 1) return true;
+      if (samePlane.length === 2) {
+        const pairKey = samePlane.slice().sort((a, b) => a - b).join(',');
+        if (pairKey === '0,3' || pairKey === '1,2') return true;
+      }
+      return false;
+    }
+
+    /* rotateSquareByIndex : retourne une Promise qui résout à la fin de l'anim */
+    function rotateSquareByIndex(idx, dir, duration) {
+      return new Promise((resolve, reject) => {
+        // validate
+        if (translationPos[idx] === 0) {
+          // Not allowed to rotate in place -> caller should have moved to mid/front first
+          // but we'll still allow caller to orchestrate auto-translation.
+          // Reject to signal caller if needed.
+          // (Many flows will call rotate after moving)
+          // For safety, we still proceed if it was called, but log warning.
+          console.warn(`rotateSquareByIndex: tentative de rotation sur pos 0 pour ${idx}`);
+        }
+        if (!canRotateIndex(idx) && translationPos[idx] > 0) {
+          // might be blocked by diagonal/plane rules; still allow if alone.
+          // If blocked, reject.
+          console.warn(`rotateSquareByIndex: conditions non remplies pour ${idx} (diagonale/plan).`);
+          // we don't reject to keep UX forgiving — caller can still await but we proceed if alone
+        }
+
+        perSquareAnimating[idx] = true;
+        setAnimatingStart();
+
+        rotationCounts[idx] += dir;
+        const deg = rotationCounts[idx] * 90;
+        const el = squares[idx];
+
+        // animate transform (preserve current translateZ)
+        const z = translationPos[idx] * (maxFront / 2);
+        el.style.transition = `transform ${duration}ms ease`;
+        el.style.transform = `translateZ(${z}px) rotate(${deg}deg)`;
+        panels[idx].style.transition = `transform ${duration}ms ease`;
+        panels[idx].style.transform = `translateZ(${thickness / 2}px)`;
+
+        // wait for transition end on el (transform)
+        let resolved = false;
+        const onEnd = (ev) => {
+          if (ev.propertyName && ev.propertyName.indexOf('transform') === -1) return;
+          if (resolved) return;
+          resolved = true;
+          el.removeEventListener('transitionend', onEnd);
+          el.style.transition = '';
+          panels[idx].style.transition = '';
+          perSquareAnimating[idx] = false;
+          setAnimatingEnd();
+          resolve(true);
+        };
+        el.addEventListener('transitionend', onEnd);
+
+        // fallback timeout
+        setTimeout(() => { if (!resolved) { resolved = true; el.removeEventListener('transitionend', onEnd); el.style.transition = ''; panels[idx].style.transition = ''; perSquareAnimating[idx] = false; setAnimatingEnd(); resolve(true); } }, duration + 80);
+      });
+    }
+
+    /* ----------------- TRANSLATIONS (promisifiées) ----------------- */
+    function getTransDuration(idx) {
+      const per = parseInt(document.getElementById(`trans-speed-${idx}`).value, 10) || 0;
+      const all = parseInt(document.getElementById('trans-speed-all').value, 10) || 1000;
+      return per || all;
+    }
+
+    function translateSquareTo(idx, targetPos, duration) {
+      return new Promise((resolve, reject) => {
+        if (targetPos < 0 || targetPos > 2) { reject('pos invalid'); return; }
+        // to enter pos 0 we require alignment: rotationCounts %4 === 0
+        if (targetPos === 0 && ((rotationCounts[idx] % 1 + 1) % 1) !== 0) {
+          // reject to let caller handle alignment (caller can call ensureAligned)
+          reject('rotation-not-aligned');
+          return;
+        }
+        perSquareAnimating[idx] = true;
+        setAnimatingStart();
+        const el = squares[idx];
+        translationPos[idx] = targetPos;
+        updatePosIndicators();
+        const z = translationPos[idx] * (maxFront / 2);
+        el.style.transition = `transform ${duration}ms ease`;
+        const deg = rotationCounts[idx] * 90;
+        el.style.transform = `translateZ(${z}px) rotate(${deg}deg)`;
+        panels[idx].style.transition = `transform ${duration}ms ease`;
+        panels[idx].style.transform = `translateZ(${thickness / 2}px)`;
+
+        let resolved = false;
+        const onEnd = (ev) => {
+          if (ev.propertyName && ev.propertyName.indexOf('transform') === -1) return;
+          if (resolved) return;
+          resolved = true;
+          el.removeEventListener('transitionend', onEnd);
+          el.style.transition = '';
+          panels[idx].style.transition = '';
+          perSquareAnimating[idx] = false;
+          setAnimatingEnd();
+          resolve(true);
+        };
+        el.addEventListener('transitionend', onEnd);
+        setTimeout(() => { if (!resolved) { resolved = true; el.removeEventListener('transitionend', onEnd); el.style.transition = ''; panels[idx].style.transition = ''; perSquareAnimating[idx] = false; setAnimatingEnd(); resolve(true); } }, duration + 80);
+      });
+    }
+
+    /* aligner une peinture pour qu'elle puisse rentrer en pos 0 (faire tourner minimalement pour atteindre multiple de 4) */
+    async function ensureAligned(idx) {
+      const rem = ((rotationCounts[idx] % 1) + 1) % 1;
+      if (rem === 0) return true;
+      // minimal rotations: forward = 4-rem, backward = rem
+      const forward = (4 - rem) % 4;
+      const backward = rem;
+      const steps = forward <= backward ? forward : backward;
+      const dir = forward <= backward ? +1 : -1;
+      const dur = parseInt(document.getElementById(`speed-${idx}`).value, 10) || parseInt(document.getElementById('speed-all').value, 10) || 800;
+      for (let s = 0; s < steps; s++) {
+        await rotateSquareByIndex(idx, dir, dur);
+        // small pause
+        await new Promise(r => setTimeout(r, 50));
+      }
+    }
+
+    /* ----------------- Séquence: avancer(front) -> rotate -> align -> revenir(home) ----------------- */
+    async function advanceRotateReturn(idx, dir) {
+      try {
+        // 1) go to front (pos 2) if not already
+        if (translationPos[idx] < 2) {
+          await translateSquareTo(idx, 2, getTransDuration(idx));
+        }
+        // 2) rotate
+        const rotDur = parseInt(document.getElementById(`speed-${idx}`).value, 10) || parseInt(document.getElementById('speed-all').value, 10) || 1000;
+        await rotateSquareByIndex(idx, dir, rotDur);
+
+        // 3) align to multiple of 4 (so can re-enter)
+        await ensureAligned(idx);
+
+        // 4) return home
+        await translateSquareTo(idx, 0, getTransDuration(idx));
+      } catch (err) {
+        // si translateSquareTo rejette parce que rotation non alignée,
+        // on tente d'aligner puis réessayer
+        if (err === 'rotation-not-aligned') {
+          try {
+            await ensureAligned(idx);
+            await translateSquareTo(idx, 0, getTransDuration(idx));
+          } catch (e) {
+            console.warn('échec retour home après correction', e);
+          }
+        } else {
+          console.warn('advanceRotateReturn erreur', err);
+        }
+      }
+    }
+
+    /* ----------------- STAGE rotation (global) ----------------- */
+    function rotateStageBy(dir, duration) {
+      setAnimatingStart();
+      stage._rot = (stage._rot || 0) + dir;
+      const deg = stage._rot * 90;
+      // stage rotates around Z only (logical arrangement), camera handles view rotation
+      stage.style.transition = `transform ${duration}ms ease`;
+      stage.style.transform = `rotateZ(${deg}deg)`;
+      setTimeout(() => { stage.style.transition = ''; setAnimatingEnd(); }, duration + 40);
+    }
+
+    /* ----------------- press / long-press orchestration ----------------- */
+    let pressTimer = null;
+    let longPressTriggered = false;
+    function handlePress(buttonKey, isCenter) {
+      let direction = 1;
+      longPressTriggered = false;
+      pressTimer = setTimeout(() => {
+        direction = -1;
+        longPressTriggered = true;
+        startAction(buttonKey, direction, isCenter);
+      }, longPressDuration);
+
+      const release = () => {
+        clearTimeout(pressTimer);
+        if (!longPressTriggered) startAction(buttonKey, direction, isCenter);
+        longPressTriggered = false;
+        document.removeEventListener('pointerup', release);
+        document.removeEventListener('pointercancel', release);
+        document.removeEventListener('pointerleave', release);
+      };
+      document.addEventListener('pointerup', release);
+      document.addEventListener('pointercancel', release);
+      document.addEventListener('pointerleave', release);
+    }
+
+    /* startAction : if center => rotate stage,
+       else => visual button -> getVisualIndex -> run advanceRotateReturn sequence
+    */
+    function startAction(buttonKey, direction, isCenter) {
+      if (isCenter) {
+        const speed = parseInt(document.getElementById('speed-all').value, 10) || 1000;
+        rotateStageBy(direction, speed);
+        return;
+      }
+      const idx = getVisualIndexForButton(buttonKey);
+      if (idx == null) { console.warn('Index null pour', buttonKey); return; }
+      // Launch sequence (we don't block UI on it)
+      advanceRotateReturn(idx, direction);
+    }
+
+    /* assign events to corner & center */
+    buttons.center.addEventListener('pointerdown', () => handlePress('center', true));
+    buttons.tl.addEventListener('pointerdown', () => handlePress('tl', false));
+    buttons.tr.addEventListener('pointerdown', () => handlePress('tr', false));
+    buttons.bl.addEventListener('pointerdown', () => handlePress('bl', false));
+    buttons.br.addEventListener('pointerdown', () => handlePress('br', false));
+
+    /* ----------------- IMAGES management ----------------- */
+    function handleImageFile(file, idx) {
+      if (!file) return;
+      if (!file.type || !file.type.startsWith('image/')) return;
+      if (imageURLs[idx]) { URL.revokeObjectURL(imageURLs[idx]); imageURLs[idx] = null; }
+      const url = URL.createObjectURL(file);
+      imageURLs[idx] = url;
+      imgs[idx].src = url; imgs[idx].style.display = 'block';
+      panels[idx].style.backgroundImage = `url(${url})`;
+      panels[idx].style.backgroundSize = 'cover';
+      panels[idx].style.backgroundPosition = 'center';
+    }
+    [0, 1, 2, 3].forEach(i => {
+      const input = imageInputs[i];
+      const clear = clearBtns[i];
+      input.addEventListener('change', e => {
+        const f = e.target.files && e.target.files[0];
+        if (f) handleImageFile(f, i);
+      });
+      clear.addEventListener('click', () => {
+        if (imageURLs[i]) { URL.revokeObjectURL(imageURLs[i]); imageURLs[i] = null; }
+        imgs[i].src = '';
+        imgs[i].style.display = 'none';
+        panels[i].style.backgroundImage = '';
+        const colors = ['red', 'blue', 'green', 'orange'];
+        squares[i].style.backgroundColor = colors[i] || 'transparent';
+      });
+
+      const sq = squares[i];
+      sq.addEventListener('dragover', ev => { ev.preventDefault(); sq.classList.add('dragover'); });
+      sq.addEventListener('dragleave', () => sq.classList.remove('dragover'));
+      sq.addEventListener('drop', ev => {
+        ev.preventDefault();
+        sq.classList.remove('dragover');
+        const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+        if (f) handleImageFile(f, i);
+      });
+    });
+
+    /* ----------------- ANIMATIONS LIBRARY (inchangé) ----------------- */
+    const animationsLibrary = {
+      "test": [
+        {
+          type: "parallel", actions: [
+            { type: "translate", index: 0, to: 1 },
+            { type: "translate", index: 3, to: 1 },
+            { type: "translate", index: 1, to: 2 },
+            { type: "translate", index: 2, to: 2 }
+          ]
+        },
+
+        {
+          type: "parallel", actions: [
+            { type: "rotate", index: 0, dir: 4 },
+            { type: "wait", ms: 100 },
+            { type: "rotate", index: 1, dir: 4 },
+            { type: "wait", ms: 100 },
+            { type: "rotate", index: 2, dir: 4 },
+            { type: "wait", ms: 100 },
+            { type: "rotate", index: 3, dir: 4 },
+          ]
+        },
+        {
+
+          type: "parallel", actions: [
+            { type: "translate", index: 0, to: 0 },
+            { type: "translate", index: 3, to: 0 },
+            { type: "translate", index: 1, to: 0 },
+            { type: "translate", index: 2, to: 0 }
+          ]
+        },
+      ],
+
+      "diag-rotate": [
+        {
+          type: "parallel", actions: [
+            { type: "translate", index: 0, to: 1 },
+            { type: "translate", index: 3, to: 1 },
+            { type: "translate", index: 1, to: 2 },
+            { type: "translate", index: 2, to: 2 }
+          ]
+        },
+        {
+          type: "parallel", actions: [
+            { type: "rotate", index: 0, dir: 4 },
+            { type: "rotate", index: 3, dir: 4 },
+            { type: "rotate", index: 1, dir: 4 },
+            { type: "rotate", index: 2, dir: 4 },
+
+          ]
+        },
+        {
+          type: "parallel", actions: [
+            { type: "translate", index: 0, to: 0 },
+            { type: "translate", index: 3, to: 0 },
+            { type: "translate", index: 1, to: 0 },
+            { type: "translate", index: 2, to: 0 }
+          ]
+        },
+      ],
+
+    };
+
+    function waitMs(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    async function execAction(action) {
+      if (!action) return;
+      if (action.type === 'wait') return waitMs(action.ms || 300);
+      if (action.type === 'translate') {
+        const dur = getTransDuration(action.index) || 800;
+        try { await translateSquareTo(action.index, action.to, dur); } catch (e) { console.warn('translate failed', e); }
+        return;
+      }
+      if (action.type === 'rotate') {
+        const dur = action.durationOverride || (parseInt(document.getElementById(`speed-${action.index}`).value, 10) || parseInt(document.getElementById('speed-all').value, 10) || 1000);
+        await rotateSquareByIndex(action.index, action.dir, dur);
+        return;
+      }
+      if (action.type === 'parallel') {
+        const promises = action.actions.map(a => {
+          if (a.type === 'translate') return translateSquareTo(a.index, a.to, getTransDuration(a.index)).catch(() => null);
+          if (a.type === 'rotate') return rotateSquareByIndex(a.index, a.dir, a.durationOverride || (parseInt(document.getElementById(`speed-${a.index}`).value, 10) || 1000)).catch(() => null);
+          if (a.type === 'wait') return waitMs(a.ms || 300);
+          return Promise.resolve();
+        });
+        await Promise.all(promises);
+        return;
+      }
+    }
+
+    async function playAnimationSequence(seq) {
+      if (!seq || !Array.isArray(seq)) { console.warn('Sequence invalide'); return; }
+      for (const action of seq) await execAction(action);
+    }
+
+    /* play via UI field */
+    playAnimBtn.addEventListener('click', () => {
+      const id = (animInput.value || '').trim();
+      if (!id) { alert('Renseigne un ID d\'animation.'); return; }
+      const seq = animationsLibrary[id];
+      if (!seq) { alert(`Aucune animation trouvée pour ID "${id}". Regarde l'objet animationsLibrary dans le code.`); return; }
+      playAnimationSequence(seq);
+    });
+
+    /* ----------------- LOAD images from same folder tl.png etc ----------------- */
+    loadParentBtn.addEventListener('click', async () => {
+      const names = ['tl', 'tr', 'bl', 'br'];
+      let anyLoaded = false;
+      for (let i = 0; i < 4; i++) {
+        const path = `${names[i]}.png`;
+        try {
+          const res = await fetch(path, { cache: 'no-cache' });
+          if (res.ok) {
+            const blob = await res.blob();
+            if (imageURLs[i]) { URL.revokeObjectURL(imageURLs[i]); imageURLs[i] = null; }
+            const url = URL.createObjectURL(blob);
+            imageURLs[i] = url;
+            panels[i].style.backgroundImage = `url(${url})`;
+            panels[i].style.backgroundSize = 'cover';
+            panels[i].style.backgroundPosition = 'center';
+            imgs[i].style.display = 'none';
+            anyLoaded = true;
+          } else {
+            console.warn(`Fichier introuvable: ${path} (status ${res.status})`);
+          }
+        } catch (e) {
+          console.warn(`Erreur fetch ${path}:`, e);
+        }
+      }
+      if (!anyLoaded) alert('Aucune image chargée depuis ../ — vérifie que les fichiers tl.png, tr.png, bl.png, br.png existent et que tu sers la page via un serveur (recommandé).');
+    });
+
+    /* ----------------- CAMERA Controls (buttons + drag) ----------------- */
+    const CAM_STEP = 6; // degrees per button press
+    camUp.addEventListener('click', () => { cameraAngles.x = Math.max(-80, cameraAngles.x + CAM_STEP); updateCameraTransform(); });
+    camDown.addEventListener('click', () => { cameraAngles.x = Math.min(80, cameraAngles.x - CAM_STEP); updateCameraTransform(); });
+    camLeft.addEventListener('click', () => { cameraAngles.y -= CAM_STEP; updateCameraTransform(); });
+    camRight.addEventListener('click', () => { cameraAngles.y += CAM_STEP; updateCameraTransform(); });
+    camReset.addEventListener('click', () => { cameraAngles.x = 0; cameraAngles.y = 0; updateCameraTransform(); });
+
+    /* Drag to rotate camera */
+    let dragging = false;
+    let lastPointer = null;
+    viewerWrap.addEventListener('pointerdown', (ev) => {
+      dragging = true;
+      lastPointer = { x: ev.clientX, y: ev.clientY };
+      viewerWrap.setPointerCapture(ev.pointerId);
+    });
+    viewerWrap.addEventListener('pointermove', (ev) => {
+      if (!dragging || !lastPointer) return;
+      const dx = ev.clientX - lastPointer.x;
+      const dy = ev.clientY - lastPointer.y;
+      lastPointer = { x: ev.clientX, y: ev.clientY };
+      // adjust sensitivity
+      cameraAngles.y += dx * 0.3;
+      cameraAngles.x -= dy * 0.2;
+      cameraAngles.x = Math.max(-80, Math.min(80, cameraAngles.x));
+      updateCameraTransform();
+    });
+    viewerWrap.addEventListener('pointerup', (ev) => { dragging = false; lastPointer = null; try { viewerWrap.releasePointerCapture(ev.pointerId); } catch (e) { } });
+    viewerWrap.addEventListener('pointercancel', () => { dragging = false; lastPointer = null; });
+
+    /* ----------------- final initialization ----------------- */
+    indicator.style.background = 'green';
+    for (let i = 0; i < 4; i++) applyTransformForIndex(i);
+
+
+
+    /* ----------------- Animation trigger ----------------- */
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key.toLowerCase() === "a") { // touche A
+        specialAnimation();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key.toLowerCase() === "b") { // touche A
+        specialAnimation2();
+      }
+    });
+
+    /* -----------------Animations ----------------- */
+
+    async function specialAnimation() {
+      try {
+        const durTrans = document.getElementById('tra-speed-global-val').textContent;
+        const durRot = document.getElementById('rot-speed-global-val').textContent;
+
+        // Phase 1 : translation vers plan 1 et 2
+        await Promise.all([
+          translateSquareTo(0, 2, durTrans), // TL → plan 1
+          translateSquareTo(1, 1, durTrans), // TR → plan 1
+          translateSquareTo(2, 1, durTrans), // BL → plan 2
+          translateSquareTo(3, 2, durTrans)  // BR → plan 2
+        ]);
+
+        // Petite pause (optionnelle)
+        await new Promise(r => setTimeout(r, 200));
+
+        // Phase 2 : rotation simultanée
+        await Promise.all([
+          rotateSquareByIndex(0, 4, durRot),
+          rotateSquareByIndex(1, 4, durRot),
+          rotateSquareByIndex(2, 4, durRot),
+          rotateSquareByIndex(3, 4, durRot),
+          rotateStageBy(-4, durRot)
+        ]);
+
+        // Petite pause (optionnelle)
+        await new Promise(r => setTimeout(r, 200));
+
+        // Phase 3 : retour home simultané
+        await Promise.all([
+          translateSquareTo(0, 0, durTrans),
+          translateSquareTo(1, 0, durTrans),
+          translateSquareTo(2, 0, durTrans),
+          translateSquareTo(3, 0, durTrans)
+        ]);
+
+      } catch (e) {
+        console.warn("Erreur animation spéciale :", e);
+      }
+    }
+
+    async function specialAnimation3() {
+      try {
+        const durTrans = document.getElementById('tra-speed-global-val').textContent;
+        const durRot = document.getElementById('rot-speed-global-val').textContent;
+
+        // Phase 1 : translation vers plan 1 et 2
+        await Promise.all([
+          translateSquareTo(0, 2, durTrans), // TL → plan 1
+          translateSquareTo(1, 1, durTrans), // TR → plan 1
+          translateSquareTo(2, 1, durTrans), // BL → plan 2
+          translateSquareTo(3, 2, durTrans)  // BR → plan 2
+        ]);
+
+        // Petite pause (optionnelle)
+        await new Promise(r => setTimeout(r, 200));
+
+        // Phase 2 : rotation simultanée
+        await Promise.all([
+          rotateSquareByIndex(0, 4, durRot),
+          rotateSquareByIndex(1, 4, durRot),
+          rotateSquareByIndex(2, 4, durRot),
+          rotateSquareByIndex(3, 4, durRot),
+          rotateStageBy(4, durRot)
+        ]);
+
+        // Petite pause (optionnelle)
+        await new Promise(r => setTimeout(r, 200));
+
+        // Phase 3 : retour home simultané
+        await Promise.all([
+          translateSquareTo(0, 0, durTrans),
+          translateSquareTo(1, 0, durTrans),
+          translateSquareTo(2, 0, durTrans),
+          translateSquareTo(3, 0, durTrans)
+        ]);
+
+      } catch (e) {
+        console.warn("Erreur animation spéciale :", e);
+      }
+    }
+    async function specialAnimation() {
+      try {
+        const durTrans = document.getElementById('tra-speed-global-val').textContent;
+        const durRot = document.getElementById('rot-speed-global-val').textContent;
+
+        // Phase 1 : translation vers plan 1 et 2
+        await Promise.all([
+          translateSquareTo(0, 2, durTrans), // TL → plan 1
+          translateSquareTo(1, 1, durTrans), // TR → plan 1
+          translateSquareTo(2, 1, durTrans), // BL → plan 2
+          translateSquareTo(3, 2, durTrans)  // BR → plan 2
+        ]);
+
+        // Petite pause (optionnelle)
+        await new Promise(r => setTimeout(r, 200));
+
+        // Phase 2 : rotation simultanée
+        await Promise.all([
+          rotateSquareByIndex(0, 4, durRot),
+          rotateSquareByIndex(1, 4, durRot),
+          rotateSquareByIndex(2, 4, durRot),
+          rotateSquareByIndex(3, 4, durRot),
+          rotateStageBy(-4, durRot)
+        ]);
+
+        // Petite pause (optionnelle)
+        await new Promise(r => setTimeout(r, 200));
+
+        // Phase 3 : retour home simultané
+        await Promise.all([
+          translateSquareTo(0, 0, durTrans),
+          translateSquareTo(1, 0, durTrans),
+          translateSquareTo(2, 0, durTrans),
+          translateSquareTo(3, 0, durTrans)
+        ]);
+
+      } catch (e) {
+        console.warn("Erreur animation spéciale :", e);
+      }
+    }
+
+
+
+  </script>
+</body>
+
+</html>

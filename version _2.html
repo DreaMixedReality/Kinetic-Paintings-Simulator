@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Matrice 3D + Télécommande (mapping robuste)</title>
+<style>
+/* =========================================================
+   [VARIABLES CSS GLOBALES]
+   ========================================================= */
+:root{
+  --n: 3;               /* taille de la matrice n x n */
+  --F: 3;               /* nb d'étages max (0..F) */
+  --square-size: 64px;  /* taille d’un tableau */
+  --gap: 20px;          /* espacement entre tableaux */
+  --floor-depth: 50px;  /* profondeur par étage (translateZ) */
+}
+
+/* =========================================================
+   [LAYOUT GLOBAL]
+   ========================================================= */
+* { box-sizing: border-box; }
+body{
+  margin:0;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  background:#0f1115;
+  color:#eaeef5;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+/* =========================================================
+   [VIEWER 3D : camera + rotation de VUE (X/Y)]
+   - Rotation de VUE : manipulation à la souris (X/Y)
+   - N’AFFECTE PAS le mapping télécommande → tableaux
+   ========================================================= */
+#viewer{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  perspective: 1000px;
+  background: radial-gradient(1200px 600px at center, #202431, #141820);
+  overflow:hidden;
+}
+#viewRotationWrapper{ transform-style: preserve-3d; }
+#logicalRotationWrapper{
+  transform-style: preserve-3d;   /* Rotation LOGIQUE autour de Z (bouton Rotation) */
+  transform-origin: center center;
+}
+.grid{
+  display:grid;
+  transform-style: preserve-3d;
+  gap: var(--gap);
+  grid-template-columns: repeat(var(--n), var(--square-size));
+  grid-template-rows: repeat(var(--n), var(--square-size));
+}
+
+/* =========================================================
+   [TABLEAUX (tiles)]
+   - Chaque tile a : floor courant (Z) + rotation interne (multiples de 90°)
+   ========================================================= */
+.tile{
+  background: linear-gradient(#b6e3ff, #7dc3ff);
+  border: 2px solid #0e4a6a;
+  border-radius: 8px;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700;
+  color:#062c40;
+  transform-style: preserve-3d;
+  transition: transform 450ms ease;
+  box-shadow: 0 10px 25px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25);
+  user-select:none;
+}
+
+/* =========================================================
+   [TELECOMMANDE : n x n boutons]
+   - Mapping recalculé après rotations 90/180/270
+   ========================================================= */
+#remote{
+  display:grid;
+  grid-template-columns: repeat(var(--n), var(--square-size));
+  grid-template-rows: repeat(var(--n), var(--square-size));
+  gap: 10px;
+  justify-content:center;
+  margin: 16px 0;
+}
+#remote button{
+  background: linear-gradient(#a7efb3,#73d88a);
+  border:2px solid #0c5a1d;
+  border-radius:8px;
+  font-weight:700;
+  cursor:pointer;
+  box-shadow: 0 6px 12px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.25);
+  transition: transform .1s ease;
+  user-select:none;
+}
+#remote button:active{ transform: translateY(1px); }
+#remote button:disabled{
+  opacity:.6; cursor:not-allowed;
+}
+
+/* =========================================================
+   [CONTROLS : bouton Rotation (logique) + sliders]
+   ========================================================= */
+.controls{
+  display:flex; justify-content:center; gap:12px; margin-bottom:8px;
+}
+.controls button{
+  padding:10px 14px;
+  background:#e5e7eb; color:#111827; font-weight:700;
+  border:2px solid #111827; border-radius:10px; cursor:pointer;
+}
+.sliders{
+  display:flex; justify-content:center; gap:24px; padding: 0 12px 16px;
+}
+.sliders label{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+.sliders input[type="range"]{ width: 220px; }
+
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     [VIEWER 3D]
+     - viewRotationWrapper : rotation de VUE (X/Y) via drag
+     - logicalRotationWrapper : rotation LOGIQUE (Z) via bouton
+     ========================================================= -->
+<div id="viewer">
+  <div id="viewRotationWrapper">
+    <div id="logicalRotationWrapper">
+      <div id="grid" class="grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
+     [TELECOMMANDE n x n]
+     ========================================================= -->
+<div id="remote"></div>
+
+<!-- =========================================================
+     [CONTROLS]
+     - Bouton Rotation (logique, multiples de 45°, clic court / appui long)
+     ========================================================= -->
+<div class="controls">
+  <button id="rotateBtn" title="Clic court: +45° | Appui long: -45°">Rotation (Z)</button>
+</div>
+
+<!-- =========================================================
+     [SLIDERS PARAMETRES]
+     - n : taille matrice
+     - F : nombre d'étages max (0..F)
+     - Gap : espacement entre tableaux
+     ========================================================= -->
+<div class="sliders">
+  <label>n
+    <input type="range" id="nSlider" min="1" max="8" value="3"/>
+  </label>
+  <label>F
+    <input type="range" id="fSlider" min="1" max="7" value="3"/>
+  </label>
+  <label>Gap
+    <input type="range" id="gapSlider" min="0" max="120" value="20"/>
+  </label>
+</div>
+
+<script>
+/* =========================================================
+   [ETAT GLOBAL]
+   ========================================================= */
+const state = {
+  n: 3,
+  F: 3,
+  gap: 20,
+  floorDepth: 50,
+  logicalRotation: 0,        // degrés cumulés (multiples de 45)
+  globalRotationStep: 45,    // angle par défaut par clic
+  isAnimating: false,
+  tiles: [],                 // {row, col, floor, rot, el}
+};
+
+/* =========================================================
+   [UTILS]
+   ========================================================= */
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const mod = (a,n)=>((a % n) + n) % n;
+
+/* =========================================================
+   [CONSTRUCTION / REBUILD DE LA MATRICE]
+   ========================================================= */
+function buildGrid(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = `repeat(${state.n}, var(--square-size))`;
+  grid.style.gridTemplateRows    = `repeat(${state.n}, var(--square-size))`;
+
+  state.tiles = [];
+  for(let r=0;r<state.n;r++){
+    for(let c=0;c<state.n;c++){
+      const el = document.createElement('div');
+      el.className = 'tile';
+      el.textContent = `${r},${c}`;
+      el.dataset.row = r;
+      el.dataset.col = c;
+      el.style.transform = `translateZ(0px) rotateZ(0deg)`;
+      const t = { row:r, col:c, floor:0, rot:0, el };
+      state.tiles.push(t);
+      grid.appendChild(el);
+    }
+  }
+}
+
+/* =========================================================
+   [TELECOMMANDE : CREATION + GESTION CLIC COURT / LONG]
+   - Chaque bouton a des "coords VISUELLES" (sa position dans la grille n x n)
+   - Nous stockons aussi des "coords CIBLE" (tile contrôlé) mises à jour par updateMapping()
+   ========================================================= */
+function buildRemote(){
+  const remote = document.getElementById('remote');
+  remote.innerHTML = '';
+  remote.style.gridTemplateColumns = `repeat(${state.n}, var(--square-size))`;
+  remote.style.gridTemplateRows    = `repeat(${state.n}, var(--square-size))`;
+
+  for(let r=0;r<state.n;r++){
+    for(let c=0;c<state.n;c++){
+      const btn = document.createElement('button');
+      // Position VISUELLE fixe du bouton dans la télécommande :
+      btn.dataset.visualRow = r;
+      btn.dataset.visualCol = c;
+
+      // Cible initiale (mapping identité avant toute rotation logique) :
+      btn.dataset.targetRow = r;
+      btn.dataset.targetCol = c;
+      btn.textContent = `→ ${r},${c}`;
+
+      // Clic court / appui long : un seul déclenchement
+      let downTime = 0, pressed = false;
+      btn.addEventListener('pointerdown', e=>{
+        if(state.isAnimating) return;
+        pressed = true;
+        downTime = performance.now();
+        btn.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      btn.addEventListener('pointerup', e=>{
+        if(!pressed) return;
+        pressed = false;
+        btn.releasePointerCapture(e.pointerId);
+        if(state.isAnimating) return;
+
+        const held = performance.now() - downTime >= 400;
+        const tr = parseInt(btn.dataset.targetRow,10);
+        const tc = parseInt(btn.dataset.targetCol,10);
+        triggerTileSequence(tr, tc, held /* reverse if long */);
+      });
+      btn.addEventListener('pointercancel', ()=> { pressed=false; });
+
+      remote.appendChild(btn);
+    }
+  }
+}
+
+/* =========================================================
+   [MAPPING TELECOMMANDE → TABLEAUX]
+   - Après rotation LOGIQUE Z:
+     * si angle % 90 == 0 : remapper (haut-gauche bouton → haut-gauche visuel)
+     * sinon (45/135/225/315) : mapping ANCRÉ (inchangé)
+   - Formules d’inversion pour retrouver le tile d’origine contrôlé par chaque bouton
+     en fonction de l’angle logique courant (0/90/180/270).
+   ========================================================= */
+function updateMapping(){
+  const angle = mod(state.logicalRotation, 360);
+
+  const remap = (angle % 90 === 0); // true pour 0/90/180/270
+
+  document.querySelectorAll('#remote button').forEach(btn=>{
+    const vr = parseInt(btn.dataset.visualRow,10);
+    const vc = parseInt(btn.dataset.visualCol,10);
+
+    if(!remap){
+      // Angles 45/135/225/315 → mapping ANCRÉ (ne change pas)
+      // on ne touche pas targetRow/Col
+      return;
+    }
+
+    const n = state.n;
+
+    let r0 = vr, c0 = vc; // par défaut angle 0
+    if(angle === 90){
+      // new = [r',c'] = [c, n-1-r]  =>  original = [n-1-c', r']
+      r0 = n - 1 - vc;
+      c0 = vr;
+    } else if(angle === 180){
+      // new = [n-1-r, n-1-c]       =>  original = [n-1-r', n-1-c']
+      r0 = n - 1 - vr;
+      c0 = n - 1 - vc;
+    } else if(angle === 270){
+      // new = [n-1-c, r]           =>  original = [c', n-1-r']
+      r0 = vc;
+      c0 = n - 1 - vr;
+    } // angle === 0 → identité
+
+    btn.dataset.targetRow = r0;
+    btn.dataset.targetCol = c0;
+    btn.textContent = `→ ${r0},${c0}`;
+  });
+}
+
+/* =========================================================
+   [RECHERCHE TILE PAR COORDONNEES ORIGINE]
+   ========================================================= */
+function getTileByRC(r,c){
+  return state.tiles.find(t => t.row===r && t.col===c);
+}
+
+/* =========================================================
+   [SEQUENCE PAR DEFAUT SUR UN TILE]
+   - home(0) → étage 2 → rotation ±90° → retour home(0)
+   - désactive toute interaction pendant l’animation
+   ========================================================= */
+async function triggerTileSequence(r, c, reverse=false){
+  if(state.isAnimating) return;
+  state.isAnimating = true;
+  setControlsEnabled(false);
+
+  const tile = getTileByRC(r,c);
+  const targetFloor = clamp(2, 0, state.F);
+  try{
+    await translateTile(tile, targetFloor, 500);
+    await rotateTile(tile, reverse ? -90 : 90, 500);
+    await translateTile(tile, 0, 500);
+  } finally {
+    state.isAnimating = false;
+    setControlsEnabled(true);
+  }
+}
+
+/* =========================================================
+   [ANIMATIONS ELEMENTAIRES : TRANSLATION Z / ROTATION 90°]
+   ========================================================= */
+function translateTile(tile, floor, duration=450){
+  return new Promise(res=>{
+    tile.floor = clamp(floor, 0, state.F);
+    tile.el.style.transition = `transform ${duration}ms ease`;
+    tile.el.style.transform =
+      `translateZ(${tile.floor * state.floorDepth}px) rotateZ(${tile.rot}deg)`;
+    setTimeout(res, duration);
+  });
+}
+function rotateTile(tile, deltaDeg, duration=450){
+  return new Promise(res=>{
+    // rotations internes en multiples de 90°
+    const snapped = Math.round(deltaDeg / 90) * 90;
+    tile.rot = mod(tile.rot + snapped, 360);
+    tile.el.style.transition = `transform ${duration}ms ease`;
+    tile.el.style.transform =
+      `translateZ(${tile.floor * state.floorDepth}px) rotateZ(${tile.rot}deg)`;
+    setTimeout(res, duration);
+  });
+}
+
+/* =========================================================
+   [ROTATION LOGIQUE GLOBALE (Z)]
+   - bouton Rotation : clic court = +45°, appui long = -45°
+   - après animation : si multiple de 90°, on remappe
+   ========================================================= */
+function rotateLogicalZ(stepDeg, duration=900, easing='cubic-bezier(.3,.7,.2,1)'){
+  if(state.isAnimating) return;
+  state.isAnimating = true;
+  setControlsEnabled(false);
+
+  const wrap = document.getElementById('logicalRotationWrapper');
+  state.logicalRotation = mod(state.logicalRotation + stepDeg, 360);
+  wrap.style.transition = `transform ${duration}ms ${easing}`;
+  wrap.style.transform  = `rotateZ(${state.logicalRotation}deg)`;
+
+  setTimeout(()=>{
+    wrap.style.transition = '';
+    // remap seulement si multiple de 90°
+    if (mod(state.logicalRotation,90) === 0){
+      updateMapping();
+    }
+    state.isAnimating = false;
+    setControlsEnabled(true);
+  }, duration);
+}
+
+/* =========================================================
+   [ROTATION DE VUE (X/Y) : DRAG SOURIS]
+   - Purement visuel, n’affecte pas le mapping
+   ========================================================= */
+(function setupViewDrag(){
+  const viewer = document.getElementById('viewer');
+  const viewWrap = document.getElementById('viewRotationWrapper');
+  let dragging=false, lastX=0, lastY=0, rx= -10, ry= 20; // petite inclinaison par défaut
+
+  const apply = ()=>{ viewWrap.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg)`; };
+  apply();
+
+  viewer.addEventListener('pointerdown', e=>{
+    dragging=true; lastX=e.clientX; lastY=e.clientY; viewer.setPointerCapture(e.pointerId);
+  });
+  viewer.addEventListener('pointerup',   e=>{ dragging=false; viewer.releasePointerCapture(e.pointerId); });
+  viewer.addEventListener('pointercancel',()=> dragging=false);
+  viewer.addEventListener('pointermove', e=>{
+    if(!dragging) return;
+    ry += (e.clientX - lastX) * 0.4;   // gauche/droite → Y
+    rx -= (e.clientY - lastY) * 0.4;   // haut/bas     → X
+    rx = clamp(rx, -80, 80);
+    apply();
+    lastX=e.clientX; lastY=e.clientY;
+  });
+})();
+
+/* =========================================================
+   [SLIDERS : n, F, Gap]
+   ========================================================= */
+document.getElementById('nSlider').addEventListener('input', e=>{
+  state.n = parseInt(e.target.value,10);
+  document.documentElement.style.setProperty('--n', state.n);
+  buildGrid();
+  buildRemote();
+  updateMapping(); // caler le mapping à l’état courant
+});
+document.getElementById('fSlider').addEventListener('input', e=>{
+  state.F = parseInt(e.target.value,10);
+  document.documentElement.style.setProperty('--F', state.F);
+});
+document.getElementById('gapSlider').addEventListener('input', e=>{
+  state.gap = parseInt(e.target.value,10);
+  document.documentElement.style.setProperty('--gap', `${state.gap}px`);
+});
+
+/* =========================================================
+   [BOUTON ROTATION (clic court / appui long > 400ms)]
+   ========================================================= */
+(function setupRotateButton(){
+  const btn = document.getElementById('rotateBtn');
+  let down=0, pressed=false;
+
+  btn.addEventListener('pointerdown', e=>{
+    if(state.isAnimating) return;
+    pressed=true; down=performance.now();
+    btn.setPointerCapture(e.pointerId);
+  });
+  btn.addEventListener('pointerup', e=>{
+    if(!pressed) return;
+    pressed=false; btn.releasePointerCapture(e.pointerId);
+    if(state.isAnimating) return;
+    const longPress = performance.now() - down >= 400;
+    const step = state.globalRotationStep * (longPress ? -1 : +1); // long = sens inverse
+    rotateLogicalZ(step, 900);
+  });
+  btn.addEventListener('pointercancel', ()=> pressed=false);
+})();
+
+/* =========================================================
+   [ENABLE/DISABLE CONTROLS PENDANT ANIMATIONS]
+   ========================================================= */
+function setControlsEnabled(enabled){
+  document.querySelectorAll('#remote button, #rotateBtn').forEach(b=> b.disabled = !enabled);
+}
+
+/* =========================================================
+   [INIT]
+   ========================================================= */
+(function init(){
+  // appliquer variables CSS initiales
+  document.documentElement.style.setProperty('--n', state.n);
+  document.documentElement.style.setProperty('--F', state.F);
+  document.documentElement.style.setProperty('--gap', `${state.gap}px`);
+
+  buildGrid();
+  buildRemote();
+  updateMapping(); // identité pour angle 0
+})();
+</script>
+</body>
+</html>

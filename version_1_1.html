@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Kinetic Paintings Simulator</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root{
+    --remote-size:200px;
+    --gap-pct:5%;
+  }
+  body{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+    background:#f0f0f0;
+    margin:0;
+    padding:20px;
+  }
+
+  /* --- container de carrés --- */
+  #container{
+    position:relative;
+    width:420px;
+    height:420px;
+    margin-bottom:24px;
+    perspective:1000px;
+    transform-origin:center center;
+  }
+  .square-wrapper{
+    position:absolute;
+    width:48%;
+    height:48%;
+    box-sizing:border-box;
+    border-radius:8px;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+    transform-origin:center center;
+  }
+  .square-wrapper.dragover{
+    outline:3px dashed rgba(0,0,0,0.25);
+  }
+
+  /* image <img> interne qui remplit le carré */
+  .square-img{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;      /* <-- remplit et crop */
+    display:none;
+    pointer-events:none;
+    user-select:none;
+  }
+  .square-wrapper.has-image .square-img{ display:block; }
+  .square-wrapper.has-image{ background-color:transparent; }
+
+  /* positions initiales (couleurs par défaut) */
+  #sq0{ top:0; left:0; background:red; }
+  #sq1{ top:0; right:0; background:blue; }
+  #sq2{ bottom:0; left:0; background:green; }
+  #sq3{ bottom:0; right:0; background:orange; }
+
+  /* --- télécommande (sans wrapper blanc) --- */
+  #remote{
+    width:var(--remote-size);
+    height:var(--remote-size);
+    display:grid;
+    /* grille 3x3 : coins pour les boutons, centre pour le bouton central */
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-rows: 1fr auto 1fr;
+    gap: var(--gap-pct);
+    align-items:center;
+    justify-items:center;
+    position:relative;
+    margin-bottom:12px;
+  }
+
+  /* coins : placer explicitement dans les bonnes cases */
+  #btn-tl{ grid-column:1; grid-row:1; }
+  #btn-tr{ grid-column:3; grid-row:1; }
+  #btn-bl{ grid-column:1; grid-row:3; }
+  #btn-br{ grid-column:3; grid-row:3; }
+
+  .corner-btn{
+    width:80%;
+    height:80%;
+    background:#000;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    outline:none;
+    transition:transform .09s ease, box-shadow .12s;
+    box-shadow:0 3px 8px rgba(0,0,0,0.25);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .corner-btn:active{ transform:scale(.96); }
+  .corner-btn.disabled{ pointer-events:none; background:#222; box-shadow:none; }
+
+  /* centre : placé dans la case centrale (grid-column:2 / grid-row:2) */
+  #center-btn{
+    grid-column:2;
+    grid-row:2;
+    width:74px;
+    height:74px;
+    border-radius:50%;
+    background:radial-gradient(circle at center, rgba(0,0,0,0.0) 30%, #000 30%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    box-shadow:0 6px 14px rgba(0,0,0,0.28);
+    transition:transform .09s;
+  }
+  #center-btn:active{ transform:scale(.97); }
+  #center-btn.disabled{ pointer-events:none; background:radial-gradient(circle at center, rgba(0,0,0,0.0) 30%, #222 30%); box-shadow:none; }
+
+  /* indicateur (vert/rouge) */
+  #center-indicator{
+    width:40%;
+    height:40%;
+    border-radius:50%;
+    background:green;
+    transition:background .12s;
+    pointer-events:none;
+  }
+
+  /* sliders, uploads, notes */
+  .sliders{
+    margin-top:12px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    width:420px;
+  }
+  .slider-group{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    justify-content:space-between;
+  }
+  .slider-group label{ width:180px; }
+  .file-inputs{
+    margin-top:12px;
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    justify-content:center;
+    width:420px;
+  }
+  .file-control{ display:flex; flex-direction:column; gap:6px; align-items:center; font-size:13px; }
+  .note{ margin-top:10px; font-size:13px; color:#333; width:420px; text-align:center; }
+
+  @media (max-width:480px){
+    #container{ width:320px; height:320px; }
+    .sliders, .file-inputs, .note{ width:320px; }
+    #remote{ width:180px; height:180px; gap:5%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- grille de carrés -->
+<div id="container" aria-label="Zone des carrés">
+  <div id="sq0" class="square-wrapper" data-index="0">
+    <img class="square-img" alt="TL">
+  </div>
+  <div id="sq1" class="square-wrapper" data-index="1">
+    <img class="square-img" alt="TR">
+  </div>
+  <div id="sq2" class="square-wrapper" data-index="2">
+    <img class="square-img" alt="BL">
+  </div>
+  <div id="sq3" class="square-wrapper" data-index="3">
+    <img class="square-img" alt="BR">
+  </div>
+</div>
+
+<!-- télécommande (sans wrapper) -->
+<div id="remote" role="application" aria-label="Télécommande">
+  <button class="corner-btn" id="btn-tl" title="Haut gauche" aria-label="Haut gauche"></button>
+  <button class="corner-btn" id="btn-tr" title="Haut droite" aria-label="Haut droite"></button>
+  <button class="corner-btn" id="btn-bl" title="Bas gauche" aria-label="Bas gauche"></button>
+  <button class="corner-btn" id="btn-br" title="Bas droite" aria-label="Bas droite"></button>
+
+  <div id="center-btn" role="button" title="Tourner tout">
+    <div id="center-indicator" aria-hidden="true"></div>
+  </div>
+</div>
+
+<!-- sliders -->
+<div class="sliders" aria-hidden="false">
+  <div class="slider-group">
+    <label for="speed-all">Vitesse ensemble (ms)</label>
+    <input id="speed-all" type="range" min="100" max="4000" value="1000">
+    <span id="speed-all-val">1000</span>
+  </div>
+  <div class="slider-group">
+    <label for="speed-0">Vitesse carré TL (ms)</label>
+    <input id="speed-0" type="range" min="100" max="4000" value="1000">
+    <span id="speed-0-val">1000</span>
+  </div>
+  <div class="slider-group">
+    <label for="speed-1">Vitesse carré TR (ms)</label>
+    <input id="speed-1" type="range" min="100" max="4000" value="1000">
+    <span id="speed-1-val">1000</span>
+  </div>
+  <div class="slider-group">
+    <label for="speed-2">Vitesse carré BL (ms)</label>
+    <input id="speed-2" type="range" min="100" max="4000" value="1000">
+    <span id="speed-2-val">1000</span>
+  </div>
+  <div class="slider-group">
+    <label for="speed-3">Vitesse carré BR (ms)</label>
+    <input id="speed-3" type="range" min="100" max="4000" value="1000">
+    <span id="speed-3-val">1000</span>
+  </div>
+</div>
+
+<!-- uploads -->
+<div class="file-inputs" aria-label="Images des carrés">
+  <div class="file-control">
+    <label for="img-0">Image TL</label>
+    <input id="img-0" type="file" accept="image/*">
+    <button id="clear-0" type="button">Réinitialiser</button>
+  </div>
+  <div class="file-control">
+    <label for="img-1">Image TR</label>
+    <input id="img-1" type="file" accept="image/*">
+    <button id="clear-1" type="button">Réinitialiser</button>
+  </div>
+  <div class="file-control">
+    <label for="img-2">Image BL</label>
+    <input id="img-2" type="file" accept="image/*">
+    <button id="clear-2" type="button">Réinitialiser</button>
+  </div>
+  <div class="file-control">
+    <label for="img-3">Image BR</label>
+    <input id="img-3" type="file" accept="image/*">
+    <button id="clear-3" type="button">Réinitialiser</button>
+  </div>
+</div>
+
+<div class="note">Glisser & déposer une image sur un carré ou utiliser "Image ...". Les images restent locales (URL.createObjectURL).</div>
+
+<script>
+/* ---------- références DOM ---------- */
+const squares = [...document.querySelectorAll('.square-wrapper')];
+const buttons = {
+  tl: document.getElementById('btn-tl'),
+  tr: document.getElementById('btn-tr'),
+  bl: document.getElementById('btn-bl'),
+  br: document.getElementById('btn-br'),
+  center: document.getElementById('center-btn')
+};
+const indicator = document.getElementById('center-indicator');
+const container = document.getElementById('container');
+
+/* ---------- état ---------- */
+const rotationCounts = [0,0,0,0]; // pour chaque carré (multiples de 90°)
+let containerRotationCount = 0;    // pour le container (en quarts de tour)
+const imageURLs = [null, null, null, null]; // stocke createObjectURL
+let animating = false;
+let pressTimer = null;
+let longPressTriggered = false;
+
+/* ---------- helpers UI ---------- */
+function disableButtons(){
+  animating = true;
+  indicator.style.background = 'red';
+  Object.values(buttons).forEach(b => b.classList.add('disabled'));
+}
+function enableButtons(){
+  animating = false;
+  indicator.style.background = 'green';
+  Object.values(buttons).forEach(b => b.classList.remove('disabled'));
+}
+
+/* afficher valeurs sliders */
+['all','0','1','2','3'].forEach(k=>{
+  const el = document.getElementById(k==='all' ? 'speed-all' : `speed-${k}`);
+  const val = document.getElementById(k==='all' ? 'speed-all-val' : `speed-${k}-val`);
+  el.addEventListener('input', ()=> val.textContent = el.value);
+});
+
+/* ---------- rotations (compteurs, robustes) ---------- */
+function rotateSquareByIndex(idx, dir, duration, cb){
+  rotationCounts[idx] += dir;
+  const deg = rotationCounts[idx] * 90;
+  const el = squares[idx];
+  el.style.transition = `transform ${duration}ms ease`;
+  el.style.transform = `rotate(${deg}deg)`;
+  setTimeout(()=>{ el.style.transition = ''; cb && cb(); }, duration);
+}
+function rotateContainerBy(dir, duration, cb){
+  containerRotationCount += dir;
+  const deg = containerRotationCount * 90;
+  container.style.transition = `transform ${duration}ms ease`;
+  container.style.transform = `rotate(${deg}deg)`;
+  setTimeout(()=>{ container.style.transition = ''; cb && cb(); }, duration);
+}
+
+/* ---------- mapping dynamique boutons -> index interne ---------- */
+/* visualOrder = positions on screen [tl,tr,br,bl]
+   idxMap maps visual pos -> internal index  (internal order 0:TL,1:TR,2:BL,3:BR)
+   visual pos 0(tl) -> internal 0
+   pos 1(tr) -> internal 1
+   pos 2(br) -> internal 3
+   pos 3(bl) -> internal 2
+*/
+function getVisualIndexForButton(buttonKey){
+  if(buttonKey === 'center') return null;
+  const visualOrder = ['tl','tr','br','bl'];
+  const idxMap = [0,1,3,2];
+  let pos = visualOrder.indexOf(buttonKey); // 0..3
+  const rot = ((containerRotationCount % 4) + 4) % 4;
+  pos = (pos - rot + 4) % 4; // recule la position selon rotation du container
+  return idxMap[pos];
+}
+
+/* ---------- gestion press / long press (pointer events) ---------- */
+function handlePress(buttonKey, isCenter){
+  if(animating) return;
+  let direction = 1;
+  longPressTriggered = false;
+  pressTimer = setTimeout(()=>{
+    direction = -1;
+    longPressTriggered = true;
+    startRotation(buttonKey, direction, isCenter);
+  }, 1000);
+
+  const release = () => {
+    clearTimeout(pressTimer);
+    if(!longPressTriggered) startRotation(buttonKey, direction, isCenter);
+    longPressTriggered = false;
+    document.removeEventListener('pointerup', release);
+    document.removeEventListener('pointercancel', release);
+    document.removeEventListener('pointerleave', release);
+  };
+  document.addEventListener('pointerup', release);
+  document.addEventListener('pointercancel', release);
+  document.addEventListener('pointerleave', release);
+}
+
+function startRotation(buttonKey, direction, isCenter){
+  disableButtons();
+  if(isCenter){
+    const speed = parseInt(document.getElementById('speed-all').value, 10);
+    rotateContainerBy(direction, speed, enableButtons);
+  } else {
+    const idx = getVisualIndexForButton(buttonKey);
+    const speed = parseInt(document.getElementById(`speed-${idx}`).value, 10);
+    rotateSquareByIndex(idx, direction, speed, enableButtons);
+  }
+}
+
+/* assignation events */
+buttons.center.addEventListener('pointerdown', ()=> handlePress('center', true));
+buttons.tl.addEventListener('pointerdown', ()=> handlePress('tl', false));
+buttons.tr.addEventListener('pointerdown', ()=> handlePress('tr', false));
+buttons.bl.addEventListener('pointerdown', ()=> handlePress('bl', false));
+buttons.br.addEventListener('pointerdown', ()=> handlePress('br', false));
+
+/* ---------- gestion images (img interne, object-fit:cover) ---------- */
+function handleImageFile(file, idx){
+  if(!file) return;
+  if(!file.type || !file.type.startsWith('image/')) return;
+  // revoke previous URL if any
+  if(imageURLs[idx]){ URL.revokeObjectURL(imageURLs[idx]); imageURLs[idx] = null; }
+  const url = URL.createObjectURL(file);
+  imageURLs[idx] = url;
+  const img = squares[idx].querySelector('.square-img');
+  img.src = url;
+  img.style.display = 'block';
+  squares[idx].classList.add('has-image');
+  // background color is cleared via .has-image CSS
+}
+
+/* assign inputs / drag&drop / clear */
+['0','1','2','3'].forEach(iStr => {
+  const i = parseInt(iStr, 10);
+  const input = document.getElementById(`img-${i}`);
+  const clearBtn = document.getElementById(`clear-${i}`);
+  input.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if(f) handleImageFile(f, i);
+  });
+  clearBtn.addEventListener('click', () => {
+    if(imageURLs[i]){ URL.revokeObjectURL(imageURLs[i]); imageURLs[i] = null; }
+    const img = squares[i].querySelector('.square-img');
+    img.src = '';
+    img.style.display = 'none';
+    squares[i].classList.remove('has-image');
+    // restore default color
+    const colors = ['red','blue','green','orange'];
+    squares[i].style.backgroundColor = colors[i] || 'transparent';
+  });
+
+  // drag & drop
+  const sq = squares[i];
+  sq.addEventListener('dragover', ev => { ev.preventDefault(); sq.classList.add('dragover'); });
+  sq.addEventListener('dragleave', () => sq.classList.remove('dragover'));
+  sq.addEventListener('drop', ev => {
+    ev.preventDefault();
+    sq.classList.remove('dragover');
+    const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if(f) handleImageFile(f, i);
+  });
+});
+
+/* état initial */
+enableButtons();
+</script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --remote-size: 400px;
+    --corner-size: 40%;
+    --center-btn-size: 150px; /* bouton central plus gros */
+  }
+
+  body {
+    background: #f0f0f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+
+  .remote-wrapper {
+    position: relative;
+    width: var(--remote-size);
+    height: var(--remote-size);
+  }
+
+  /* Boutons coins avec découpe circulaire */
+  .corner-btn {
+    position: absolute;
+    width: var(--corner-size);
+    height: var(--corner-size);
+    background: #000;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+    transition: transform 0.09s ease;
+    z-index: 1;
+  }
+  .corner-btn:active {
+    transform: scale(.96);
+  }
+
+  /* Formes spéciales : quart de cercle découpé */
+  #btn-tl {
+    top: 0; left: 0;
+    border-radius: 3px 0 100% 0;
+  }
+  #btn-tr {
+    top: 0; right: 0;
+    border-radius: 0 0 0 100%;
+  }
+  #btn-bl {
+    bottom: 0; left: 0;
+    border-radius: 0 100% 0 0;
+  }
+  #btn-br {
+    bottom: 0; right: 0;
+    border-radius: 100% 0 0 0;
+  }
+
+  /* Bouton central qui peut chevaucher */
+  #center-btn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--center-btn-size);
+    height: var(--center-btn-size);
+    border-radius: 50%;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+    transform: translate(-50%, -50%);
+    z-index: 2; /* au-dessus des coins */
+  }
+  #center-btn:active {
+    transform: translate(-50%, -50%) scale(.97);
+  }
+
+  #center-indicator {
+    width: 42%;
+    height: 42%;
+    border-radius: 50%;
+    background: green;
+  }
+</style>
+</head>
+<body>
+  <div class="remote-wrapper">
+    <button class="corner-btn" id="btn-tl"></button>
+    <button class="corner-btn" id="btn-tr"></button>
+    <button class="corner-btn" id="btn-bl"></button>
+    <button class="corner-btn" id="btn-br"></button>
+
+    <div id="center-btn">
+      <div id="center-indicator"></div>
+    </div>
+  </div>
+</body>
+</html>
